@@ -155,3 +155,62 @@ For each available curve the runner prints and stores the gap (simulated minus
 reference) at the 5/10/20/50/80/90/95th percentiles. `metrics/calibration.py`
 has the same functions for notebooks. The plan's "within ~1 dB" criterion is
 evaluated as `max_abs_gap`.
+
+---
+
+## Reference curves: TR 37.910 Annex A
+
+`docs/tr_137910v190000p.pdf` is ETSI TR 137 910 V19.0.0 (3GPP TR 37.910
+Rel-19). Its Annex A holds the 3GPP system-level calibration for the IMT-2020
+self-evaluation: coupling gain and DL geometry (wideband SINR) CDFs,
+averaged over 21 companies, for the five ITU-R M.2412 test environments. The
+companies' medians lie within 0.4–2.4 dB of the average (Table A.1).
+
+**Extraction.** The figures are vector drawings, so
+`examples/extract_tr37910_annexA.py` reads the curves from the PDF paths
+rather than digitising pixels:
+- the axes are fitted to the tick labels (≤ 0.03 dB residual);
+- each curve is traced along the centre of its stroke;
+- curves are named from the legend by colour and solid/dashed style.
+
+It writes 50 curves to `refs/tr37910/` (`x_db, cdf`), plus `index.json` and
+re-plots (`check_A*.png`) that match the originals. In Figure A.1 the solid
+green curve is missing from the legend; it is taken to be Config. C, 36 TRxP.
+One invisible path in Figure A.3 matches no legend entry and is skipped.
+Coupling gain already uses the nrsls sign (negative dB).
+
+| Figure | Test environment (ITU-R M.2412) | Curves (coupling gain + geometry) |
+|---|---|---|
+| A.1 | Indoor Hotspot – eMBB: Config A 4 GHz (channel models A/B, 12/36 TRxP), B 30 GHz, C 70 GHz | 8 + 8 |
+| A.2 | Dense Urban – eMBB: Config A 4 GHz (A/B), Config B 30 GHz, all "w/ analog BF" | 3 + 3 |
+| A.3 | Rural – eMBB: Config A 700 MHz, B 4 GHz (ISD 1732 m), C LMLC 700 MHz (ISD 6000 m) | 6 + 6 |
+| A.4 | Urban Macro – mMTC: Config A (ISD 500 m) / B (1732 m), 700 MHz | 4 + 4 |
+| A.5 | Urban Macro – URLLC: Config A 4 GHz, B 700 MHz | 4 + 4 |
+
+**How the curves apply.** "Channel model A" is the TR 38.901 model that
+nrsls implements. "Channel model B" is the ITU-R M.2412 alternative, and
+its curves are kept for reference only. Two points in Annex A decide when a
+curve can be matched:
+
+1. **UE attachment is multi-path based.** The coupling gain sums the power
+   of every ray, each weighted by the antenna gains in its own direction. It
+   is not the gain toward the LOS direction that phase 1 uses. With
+   directional, tilted BS antennas the two differ by several dB, mostly for
+   NLOS UTs. Multi-path coupling needs the phase-2 cluster and ray
+   generation, so **these curves are the phase-2 exit criterion**. Phase 1
+   can only be compared indicatively.
+2. **The set-up is not in the TR.** Annex A points to §4 of RP-180524, and
+   the per-configuration details (tilt, calibration antenna/port mapping,
+   power, noise figure, handover margin, the analog-BF model) are in
+   RP-180524 and ITU-R M.2412. The ETSI PDF does not include the B.4 zip
+   attachments. The TR does confirm, for example, the Dense Urban 32T gNB
+   (8,8,2,1,1;2,8), the same array as the `system` preset.
+
+Plan: add `m2412-*` presets once RP-180524 §4 (or M.2412 Table 5-x) is
+available. Then compare the channel-model-A curves through
+`metrics.calibration.percentile_gaps`, with the pass bar at "within the
+inter-company spread of Table A.1, and ≤ 1 dB at the median". Figures A.3,
+A.4 and A.5 (no analog BF) come first, then A.1/A.2 once the analog-BF
+attachment model is added.
+
+Re-extract with `pip install -e .[refs] && python examples/extract_tr37910_annexA.py --check`.
