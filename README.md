@@ -10,8 +10,8 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   [`docs/calibration-p1.md`](docs/calibration-p1.md).
 - **Phase 2 (TR 38.901 fast fading):** LSPs, clusters and rays, multipath
   port-0 RSRP and channel matrices H(f, t). The simulator matches the 3GPP
-  IMT-2020 calibration data (RP-180524 / TR 37.910 Annex A) in 6 of 7
-  configurations; see [`docs/calibration-p2.md`](docs/calibration-p2.md).
+  IMT-2020 calibration data (RP-180524 / TR 37.910 Annex A) in all 7
+  configurations it covers; see [`docs/calibration-p2.md`](docs/calibration-p2.md).
 - **Next:** phase 3, full-buffer SU-MIMO with Type-I / eType-II CSI.
 
 ## Install

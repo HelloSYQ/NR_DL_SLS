@@ -135,6 +135,8 @@ class ScenarioConfig:
     # --- RMa environment (Table 7.4.1-1) ---
     building_height_m: float = 5.0
     street_width_m: float = 20.0
+    # ITU-R M.2412 LMLC: RMa NLOS pathloss reduced by 12 dB (bounded by LOS)
+    rma_nlos_offset_db: float = 0.0
 
     # --- large-scale parameters / coupling ---
     shadow_fading: bool = True
@@ -334,8 +336,11 @@ def rp180524(env: str, channel_model_a_o2i: str = "legacy",
         # A/B: 50 % indoor, 50 % in car; LMLC: 40 % indoor, 40 % pedestrian,
         # 20 % in car
         indoor, car = (0.4, 1 / 3) if env == "rural-lmlc" else (0.5, 1.0)
+        # LMLC uses the M.2412 LMLC NLOS pathloss: max(PL_LOS, PL'_NLOS - 12)
         cfg = rma(carrier_freq_hz=fc, isd_m=isd, indoor_ratio=indoor,
-                  in_car_ratio=car, o2i_model="low", **common)
+                  in_car_ratio=car, o2i_model="low",
+                  rma_nlos_offset_db=12.0 if env == "rural-lmlc" else 0.0,
+                  **common)
     else:
         fc = 4e9 if env == "urllc-4g" else 0.7e9
         isd = 1732.0 if env == "mmtc-1732m" else 500.0

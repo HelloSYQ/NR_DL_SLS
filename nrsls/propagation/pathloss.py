@@ -112,13 +112,15 @@ def rma_los(d2d, d3d, h_bs, h_ut, fc_hz, h=5.0):
     return np.where(d2d <= d_bp, _rma_pl1(d3d, fc, h), pl2)
 
 
-def rma_nlos(d2d, d3d, h_bs, h_ut, fc_hz, h=5.0, w=20.0):
+def rma_nlos(d2d, d3d, h_bs, h_ut, fc_hz, h=5.0, w=20.0, nlos_offset_db=0.0):
+    """RMa NLOS.  ``nlos_offset_db = 12`` gives the ITU-R M.2412 LMLC
+    variant PL = max(PL_LOS, PL'_NLOS - 12), valid for 10 m < d2D < 21 km."""
     fc = fc_hz / 1e9
     pl_n = (161.04 - 7.1 * np.log10(w) + 7.5 * np.log10(h)
             - (24.37 - 3.7 * (h / h_bs) ** 2) * np.log10(h_bs)
             + (43.42 - 3.1 * np.log10(h_bs)) * (_log10(d3d) - 3.0)
             + 20.0 * np.log10(fc)
-            - (3.2 * np.log10(11.75 * h_ut) ** 2 - 4.97))
+            - (3.2 * np.log10(11.75 * h_ut) ** 2 - 4.97)) - nlos_offset_db
     return np.maximum(rma_los(d2d, d3d, h_bs, h_ut, fc_hz, h), pl_n)
 
 
@@ -136,7 +138,8 @@ def inh_nlos(d3d, fc_hz):
 # --- dispatch ----------------------------------------------------------------
 
 def basic_pathloss_db(family: str, los, d2d, d3d, h_bs, h_ut, fc_hz, *,
-                      h_e=1.0, building_height=5.0, street_width=20.0):
+                      h_e=1.0, building_height=5.0, street_width=20.0,
+                      rma_nlos_offset_db=0.0):
     """PL_b [dB] for each link given its (outdoor) LOS state."""
     los = np.asarray(los, bool)
     if family == "uma":
@@ -148,7 +151,7 @@ def basic_pathloss_db(family: str, los, d2d, d3d, h_bs, h_ut, fc_hz, *,
     elif family == "rma":
         pl_l = rma_los(d2d, d3d, h_bs, h_ut, fc_hz, building_height)
         pl_n = rma_nlos(d2d, d3d, h_bs, h_ut, fc_hz, building_height,
-                        street_width)
+                        street_width, rma_nlos_offset_db)
     elif family == "inh":
         pl_l = inh_los(d3d, fc_hz)
         pl_n = inh_nlos(d3d, fc_hz)

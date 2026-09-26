@@ -104,7 +104,8 @@ def generate_drop(cfg: ScenarioConfig, rng) -> LargeScaleDrop:
     pl = pathloss.basic_pathloss_db(
         fam, los, d2d, d3d, h_bs, h_ut, cfg.carrier_freq_hz, h_e=h_e,
         building_height=cfg.building_height_m,
-        street_width=cfg.street_width_m)
+        street_width=cfg.street_width_m,
+        rma_nlos_offset_db=cfg.rma_nlos_offset_db)
 
     # --- large-scale parameters (SF, K, DS, ASD, ASA, ZSD, ZSA) ---
     cond = pathloss.link_condition(los, o2i)

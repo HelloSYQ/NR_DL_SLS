@@ -5,13 +5,11 @@ geometry ([calibration-p1.md](calibration-p1.md)). The calibration
 reference is the per-company data of RP-180524 (the source of TR 37.910
 Annex A): 12–20 companies per configuration.
 
-**Result.** With the multipath coupling model used by the calibration, **6 of
-the 7 RP-180524 configurations that nrsls can set up match the company data**.
+**Result.** With the multipath coupling model used by the calibration, **all 7
+RP-180524 configurations that nrsls can set up match the company data**.
 Nearly all percentiles lie inside the companies' min–max envelope, and the
-gaps to the company mean are mostly within ±0.7 dB. **Rural LMLC is the
-exception.** It is still about 10 dB low, because the calibration used the
-LMLC-specific NLOS pathloss of ITU-R M.2412, which nrsls does not implement
-yet (see below).
+gaps to the company mean are mostly within ±0.7 dB (never more than 1.5 dB).
+Rural LMLC needed the LMLC NLOS pathloss of ITU-R M.2412 (see below).
 
 Reproduce:
 
@@ -51,7 +49,7 @@ min–max envelope.
 | UMa-mMTC 1732 m | +0.7 +0.3 +0.1 −0.1 +0.1 −0.3 −0.4 | 100 % | −0.1 −0.3 −0.2 −0.2 −0.1 −0.2 −0.1 | 100 % |
 | UMa-URLLC 4 GHz | −0.2 +0.6 +0.4 +0.1 +0.3 +0.6 +0.6 | 100 % | −0.3 −0.3 −0.3 −0.6 −0.7 −0.8 −0.6 | 100 % |
 | UMa-URLLC 700 MHz | −0.1 +0.1 +0.4 +0.2 +0.3 +0.7 +0.2 | 100 % | −0.4 −0.3 −0.3 −0.6 −0.7 −0.8 −0.6 | 100 % |
-| Rural LMLC (ISD 6 km) | −13.2 … −10.6 (p50) … −2.8 | 0 % | −1.7 … −0.4 … +1.5 | 43 % |
+| Rural LMLC (ISD 6 km) | −1.3 −0.5 +0.1 +0.6 +0.7 +0.7 +0.1 | 100 % | −0.5 −0.5 −0.3 −0.2 −0.1 −0.0 +0.2 | 100 % |
 
 ![Phase 2 vs RP-180524](../results/p2_rp180524.png)
 
@@ -86,11 +84,12 @@ effects of eq. (8.1-1) closed that gap:
 
 ## Open items
 
-1. **Rural LMLC.** The workbook notes "New LMLC pathloss for NLOS is used"
-   for this configuration: the ITU-R M.2412 LMLC NLOS pathloss, which is in
-   neither TR 38.901, RP-180524 nor TR 37.910. All 15 companies agree to
-   ±1.5 dB, so the gap is a model difference, not noise. It needs the
-   M.2412 Annex 1 formula.
+1. **Rural LMLC: closed.** The workbook notes "New LMLC pathloss for NLOS
+   is used". ITU-R M.2412 (`docs/R-REP-M.2412-2017-PDF-E.pdf`, RMa pathloss
+   table) defines it for LMLC as PL_NLOS = max(PL_RMa-LOS, PL'_RMa-NLOS −
+   12 dB), valid for 10 m < d2D < 21 km. It is implemented as
+   `ScenarioConfig.rma_nlos_offset_db = 12` in the `rp-rural-lmlc` preset.
+   It moved LMLC from −10.6 dB to +0.6 dB at the median.
 2. **Dense Urban config A and Indoor Hotspot** (RP-180524 Tables 1–2) need
    analog-beam sets (2-D DFT sub-array weights, best-beam-pair attachment,
    random interferer beams). Indoor Hotspot also needs ceiling TRPs and the

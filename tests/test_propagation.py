@@ -159,3 +159,14 @@ def test_shadow_fading_uses_condition_fields():
     cc = np.tile(cond, 30)
     for c, s in [(LOS, 4.0), (NLOS, 6.0), (O2I, 7.0)]:
         assert sf[cc == c].std() == pytest.approx(s, rel=0.06)
+
+
+def test_rma_lmlc_nlos_offset():
+    """ITU-R M.2412 LMLC: PL_NLOS = max(PL_LOS, PL'_NLOS - 12)."""
+    d2, hb, hu, fc = 3000.0, 35.0, 1.5, 0.7e9
+    dd = d3(d2, hb, hu)
+    los = float(pathloss.rma_los(d2, dd, hb, hu, fc))
+    std = float(pathloss.rma_nlos(d2, dd, hb, hu, fc))
+    lmlc = float(pathloss.rma_nlos(d2, dd, hb, hu, fc, nlos_offset_db=12.0))
+    assert lmlc == pytest.approx(max(los, std - 12.0))
+    assert std - lmlc == pytest.approx(12.0)      # NLOS term dominates here
