@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nrsls"
+version = "0.1.0"
+description = "NR downlink system-level simulator built on the nrdlsim link-level simulator"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.24",
+    # link-level simulator (link abstraction, MCS/TBS/CQI, antenna patterns);
+    # pinned to a commit of HelloSYQ/Claude
+    "nrdlsim @ git+https://github.com/HelloSYQ/Claude.git@2390b56750876db4b4639f88d4933b0b4950e0d4",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.6"]
+test = ["pytest>=7", "scipy>=1.10"]
+
+[tool.setuptools.packages.find]
+include = ["nrsls*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

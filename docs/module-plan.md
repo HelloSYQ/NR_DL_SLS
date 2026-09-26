@@ -1,6 +1,9 @@
 # NR Downlink System-Level Simulator (`nrsls`) — Module Plan
 
-Status: **plan for review** (no code yet).
+Status: **P1 implemented** (see [calibration-p1.md](calibration-p1.md));
+P2 next. Decisions from §8 are confirmed: UMa 3.5 GHz / 100 MHz / 32T4R
+first, Type-I + eType-II CSI, `nrdlsim` as a pinned git dependency, K = 8
+explicit interferers.
 
 Goal: a multi-cell, multi-UE NR downlink (PDSCH) system-level simulator (SLS)
 that reuses the link-level simulator `nrdlsim`
@@ -305,7 +308,7 @@ dominant cost. The plan to keep it tractable:
 
 | Phase | Content | Exit criterion |
 |---|---|---|
-| **P1 – Geometry calibration** | scenario config, hex layout + wrap-around, UE drop, pathloss/LOS/O2I/SF, antenna (TXRU virtualisation), association, coupling loss & geometry SINR | coupling-loss / geometry CDFs within ~1 dB of the TR 38.901 §7.8 calibration (UMa, UMi, InH) |
+| **P1 – Geometry calibration** | scenario config, hex layout + wrap-around, UE drop, pathloss/LOS/O2I/SF, antenna (TXRU virtualisation), association, coupling loss & geometry SINR | coupling-loss / geometry CDFs within ~1 dB of the TR 38.901 §7.8 calibration (UMa, UMi, InH). **Status:** implemented and verified against the spec formulas; the comparison with the industry curves waits for the reference data (not reachable from this environment) |
 | **P2 – Fast fading** | LSPs with spatial consistency, §7.5 cluster/ray generator (shared kernel with LLS CDL), H per RB per slot | DS/ASD/ZSD/singular-value CDFs vs §7.8 calibration |
 | **P3 – Full-buffer SU-MIMO** | MMSE-IRC SINR, SVD precoding first, then Type-I and Rel-16 eType-II codebooks (with CSI payload size), CSI with delay, PF scheduler, per-UE OLLA, multi-process HARQ, L2S | cell avg / 5 %-ile SE in line with 38.802 / M.2412 industry results; LLS↔SLS regression passes |
 | **P4 – Traffic & load** | FTP model 1/3, RU-dependent interference, UPT metrics | UPT vs RU curves |
