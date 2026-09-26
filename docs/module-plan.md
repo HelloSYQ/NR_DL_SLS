@@ -331,7 +331,7 @@ dominant cost. The plan to keep it tractable:
 ## 8. Open decisions (defaults proposed)
 1. **First scenario**: UMa 3.5 GHz, 100 MHz @ 30 kHz, 32T4R (proposed), or
    Dense-Urban M.2412 (4 GHz, 200 MHz)?
-2. **CSI**: ~~decided~~ both Type-I single-panel and Rel-16 eType-II are
+2. **CSI** (decided): both Type-I single-panel and Rel-16 eType-II are
    built in P3 (FDD-style CSI), with SVD kept as the ideal/reciprocity
    reference.
 3. **Dependency on `nrdlsim`**: pinned pip/git dependency (proposed) or a
