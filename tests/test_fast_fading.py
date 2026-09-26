@@ -123,3 +123,30 @@ def test_port_field_matches_port_gain():
     f1 = ant.port0_field(az, zen, 150.0)
     f2 = ant.port0_field(az, zen, 150.0, downtilt_deg=1e-12)
     assert np.allclose(f1, f2, atol=1e-9)
+
+
+def test_channel_matrix_power_matches_rsrp_and_is_static_without_motion():
+    from nrsls.config.scenario import UEAntenna
+    from nrsls.propagation.fast_fading import link_channel
+    rng = np.random.default_rng(4)
+    n = 6
+    ls = _flat(_lsps("uma", NLOS, n, rng))
+    cl = generate_clusters("uma", 3.5, np.full(n, NLOS), ls,
+                           rng.uniform(-50, 50, n), np.full(n, 97.0), rng)
+    bs = BSAntennaConfig(M=8, N=4, P=2, Mp=2, Np=4, dV=0.5, dH=0.5,
+                         electrical_tilt_deg=100)
+    ue = UEAntenna(M=1, N=2, P=2)
+    g = multipath_gain(cl, lambda a, z: BSAntenna(bs).port0_field(a, z, 0.0), 2)
+    lam = 3e8 / 3.5e9
+    diff = []
+    for link in range(n):
+        H = link_channel(cl, link, bs, 0.0, ue, np.linspace(-50e6, 50e6, 64),
+                         np.linspace(0, 0.5, 60), velocity_mps=(8.0, 3.0, 0.0),
+                         wavelength_m=lam)
+        assert H.shape == (60, 64, 4, 16)
+        diff.append(10 * np.log10(np.mean(np.abs(H[..., 0]) ** 2) / g[link]))
+    # averaged over time and frequency the port-0 power is the eq. 8.1-1 RSRP
+    assert abs(np.mean(diff)) < 0.3 and np.max(np.abs(diff)) < 1.0
+    H = link_channel(cl, 0, bs, 0.0, ue, [0.0], [0.0, 0.1, 0.3],
+                     velocity_mps=(0.0, 0.0, 0.0), wavelength_m=lam)
+    assert np.allclose(H[0], H[1]) and np.allclose(H[0], H[2])

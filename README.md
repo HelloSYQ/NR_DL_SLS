@@ -6,10 +6,13 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
 (numerology, MCS/TBS, CSI) and ITU-R M.2412 (KPIs).
 
 - **Design:** [`docs/module-plan.md`](docs/module-plan.md)
-- **Phase 1 (large-scale geometry):** implemented and verified. See
+- **Phase 1 (large-scale geometry):** done, see
   [`docs/calibration-p1.md`](docs/calibration-p1.md).
-- **Next:** phase 2 (TR 38.901 §7.5 fast fading), then phase 3 (full-buffer
-  SU-MIMO with Type-I / eType-II CSI).
+- **Phase 2 (TR 38.901 fast fading):** LSPs, clusters and rays, multipath
+  port-0 RSRP and channel matrices H(f, t). The simulator matches the 3GPP
+  IMT-2020 calibration data (RP-180524 / TR 37.910 Annex A) in 6 of 7
+  configurations; see [`docs/calibration-p2.md`](docs/calibration-p2.md).
+- **Next:** phase 3, full-buffer SU-MIMO with Type-I / eType-II CSI.
 
 ## Install
 
@@ -58,12 +61,13 @@ nrsls/
   config/scenario.py     ScenarioConfig, BS/UT antenna configs, presets
   topology/              hexagonal grid + wrap-around, InH hall, UT drop
   antenna/array.py       panel + TXRU virtualisation (element pattern from nrdlsim)
-  propagation/           pathloss, LOS probability, O2I / in-car loss, SF fields
-  link/                  noise, RSRP, geometry; serving-cell association
+  propagation/           pathloss, LOS, O2I / in-car loss, LSPs, clusters/rays, H(f,t)
+  link/                  noise, geometry, multipath port-0 RSRP; association
   engine/                one drop (drop.py), multi-drop driver (simulator.py)
   metrics/               CDFs, percentiles, reference-curve comparison
   plots/                 CDF plotting
 run_sls.py               command-line runner
-examples/                phase-1 figures
+examples/                figures, reference-data import, calibration comparison
+refs/                    TR 37.910 Annex A curves, RP-180524 per-company data
 tests/                   pytest suite
 ```

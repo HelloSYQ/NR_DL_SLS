@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Phase-1 figures: large-scale calibration CDFs, the default system, and a
-layout map.
+layout map.  Uses the phase-1 coupling model (BS gain toward the LOS
+direction) so that the published phase-1 results are reproducible.
 
 Writes
   results/p1_calibration_6ghz.png   UMa / UMi / InH, TR 38.901 7.8.1-style
@@ -46,7 +47,7 @@ def two_panel(runs: dict, title: str, path: str):
 
 
 def layout_map(path: str):
-    cfg = get_preset("system", ue_per_cell=30)
+    cfg = get_preset("system", ue_per_cell=30, coupling_model="los")
     d = generate_drop(cfg, np.random.default_rng(3))
     lay = d.layout
     fig, ax = plt.subplots(figsize=(7.2, 6.4), facecolor=cdf.SURFACE)
@@ -90,7 +91,8 @@ def main():
     calib = {}
     for name, label in [("calib-uma", "UMa"), ("calib-umi", "UMi"),
                         ("calib-inh", "InH-open")]:
-        calib[label] = run_large_scale(get_preset(name), DROPS, SEED, JOBS)
+        calib[label] = run_large_scale(get_preset(name, coupling_model="los"),
+                                       DROPS, SEED, JOBS)
         summary[name] = large_scale_summary(calib[label])
     two_panel(calib, f"Large-scale calibration, 6 GHz, 20 MHz "
               f"(TR 38.901 Table 7.8-1 style), {DROPS} drops",
@@ -101,7 +103,8 @@ def main():
                       ("O2I low loss only", {"o2i_model": "low"}),
                       ("O2I legacy (20 dB, Table 7.4.3-3)",
                        {"o2i_model": "legacy"})]:
-        system[label] = run_large_scale(get_preset("system", **kw), DROPS,
+        system[label] = run_large_scale(get_preset("system", coupling_model="los",
+                                                   **kw), DROPS,
                                         SEED, JOBS)
         summary[f"system | {label}"] = large_scale_summary(system[label])
     two_panel(system, f"UMa 3.5 GHz, 100 MHz, 32T4R: O2I model sensitivity, "

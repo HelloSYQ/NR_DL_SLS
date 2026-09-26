@@ -1,7 +1,9 @@
 # NR Downlink System-Level Simulator (`nrsls`) — Module Plan
 
-Status: **P1 implemented** (see [calibration-p1.md](calibration-p1.md));
-P2 next. Decisions from §8 are confirmed: UMa 3.5 GHz / 100 MHz / 32T4R
+Status: **P1 and P2 implemented** (see [calibration-p1.md](calibration-p1.md) and
+[calibration-p2.md](calibration-p2.md)); P3 next. P2 matches the RP-180524 /
+TR 37.910 3GPP calibration data in 6 of 7 configurations (Rural LMLC pending the
+M.2412 LMLC pathloss). Decisions from §8 are confirmed: UMa 3.5 GHz / 100 MHz / 32T4R
 first, Type-I + eType-II CSI, `nrdlsim` as a pinned git dependency, K = 8
 explicit interferers.
 
