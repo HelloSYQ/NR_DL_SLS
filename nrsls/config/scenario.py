@@ -285,3 +285,62 @@ def get_preset(name: str, **overrides) -> ScenarioConfig:
     except KeyError:
         raise ValueError(f"unknown preset {name!r}; "
                          f"choose from {sorted(PRESETS)}") from None
+
+
+# ----------------------------------------------------------------------------
+# RP-180524: 3GPP calibration for the IMT-2020 self-evaluation (ITU-R M.2412
+# test environments; results in TR 37.910 Annex A)
+# ----------------------------------------------------------------------------
+
+def rp180524(env: str, channel_model_a_o2i: str = "legacy",
+             **overrides) -> ScenarioConfig:
+    """Baseline calibration parameters of RP-180524 Tables 3-5.
+
+    ``env``: 'rural-700m', 'rural-4g', 'rural-lmlc', 'mmtc-500m',
+    'mmtc-1732m', 'urllc-4g', 'urllc-700m'.  Common to all: 10 MHz simulation
+    bandwidth, 46 dBm per TRxP, UE NF 7 dB, isotropic 0 dBi UE at 1.5 m,
+    3 sectors (30/150/270 deg), d2D_min = 10 m, wrap-around, attachment on
+    port-0 RSRP with 0 dB handover margin.  Each port is a vertical sub-array
+    of 8 elements at 0.8 lambda (element pattern of M.2412 Table 8-6,
+    8 dBi), mechanically horizontal with the tabulated electrical tilt.
+
+    The high/low-loss building mix in RP-180524 "applies to channel model B";
+    ``channel_model_a_o2i`` selects the O2I model used here for channel
+    model A (default: the TR 38.901 Table 7.4.3-3 legacy model for UMa,
+    low-loss for RMa, which has no legacy variant in nrsls).
+
+    Dense Urban config A and Indoor Hotspot need the analog-beam attachment
+    and are not covered yet.
+    """
+    env = env.lower()
+    tilt = {"rural-700m": 100.0, "rural-4g": 100.0, "rural-lmlc": 96.0,
+            "mmtc-500m": 99.0, "mmtc-1732m": 93.0, "urllc-4g": 99.0,
+            "urllc-700m": 99.0}[env]
+    ant = BSAntennaConfig(M=8, N=1, P=2, Mp=1, Np=1, dV=0.8,
+                          electrical_tilt_deg=tilt)
+    common = dict(carrier=CarrierConfig(mu=0, n_size_grid=52),
+                  noise_bandwidth_hz=10e6, bs_tx_power_dbm=46.0,
+                  ue_noise_figure_db=7.0, min_d2d_m=10.0, n_floors=(1, 1),
+                  bs_antenna=ant, ue_antenna=UEAntenna(M=1, N=1, P=2))
+    if env.startswith("rural"):
+        fc = 4e9 if env == "rural-4g" else 0.7e9
+        isd = 6000.0 if env == "rural-lmlc" else 1732.0
+        # A/B: 50 % indoor, 50 % in car; LMLC: 40 % indoor, 40 % pedestrian,
+        # 20 % in car
+        indoor, car = (0.4, 1 / 3) if env == "rural-lmlc" else (0.5, 1.0)
+        cfg = rma(carrier_freq_hz=fc, isd_m=isd, indoor_ratio=indoor,
+                  in_car_ratio=car, o2i_model="low", **common)
+    else:
+        fc = 4e9 if env == "urllc-4g" else 0.7e9
+        isd = 1732.0 if env == "mmtc-1732m" else 500.0
+        indoor = 0.2 if env.startswith("urllc") else 0.8
+        car = 0.0                       # outdoor UMa UEs: no car loss
+        cfg = uma(carrier_freq_hz=fc, isd_m=isd, indoor_ratio=indoor,
+                  in_car_ratio=car, o2i_model=channel_model_a_o2i,
+                  o2i_high_loss_ratio=0.2, **common)
+    return replace(cfg, name=f"RP-180524 {env}", **overrides)
+
+
+for _env in ("rural-700m", "rural-4g", "rural-lmlc", "mmtc-500m",
+             "mmtc-1732m", "urllc-4g", "urllc-700m"):
+    PRESETS[f"rp-{_env}"] = (lambda e: (lambda **kw: rp180524(e, **kw)))(_env)

@@ -19,7 +19,7 @@ dependencies = [
 plot = ["matplotlib>=3.6"]
 test = ["pytest>=7", "scipy>=1.10"]
 # re-extracting the TR 37.910 Annex A reference curves
-refs = ["pymupdf>=1.24"]
+refs = ["pymupdf>=1.24", "openpyxl>=3.1"]
 
 [tool.setuptools.packages.find]
 include = ["nrsls*"]

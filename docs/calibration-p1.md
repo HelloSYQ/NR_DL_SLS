@@ -214,3 +214,77 @@ A.4 and A.5 (no analog BF) come first, then A.1/A.2 once the analog-BF
 attachment model is added.
 
 Re-extract with `pip install -e .[refs] && python examples/extract_tr37910_annexA.py --check`.
+
+---
+
+## RP-180524: calibration set-up and per-company data
+
+`docs/RP-180524 ...docx` gives the baseline calibration parameters for every
+M.2412 test environment (§4, Tables 1–5). The attached zip holds each
+company's coupling-gain and geometry CDFs at the 0…100 % points (12–20
+companies per configuration). `examples/import_rp180524.py` turns them into
+`refs/rp180524/<sheet>_<metric>.csv` (`pct, mean, min, max, <company>…`).
+These are the data behind TR 37.910 Figures A.1–A.5 and supersede the curves
+extracted from the PDF. The PDF curves differ from the spreadsheet means by up
+to ~1 dB, probably because the figure averages horizontally rather than per
+percentile.
+
+**What RP-180524 fixes:**
+- attachment is the port-0 RSRP of **TR 36.873 eq. (8.1-1)**, summed over
+  every ray with the element and sub-array gain in that ray's direction,
+  with a 0 dB handover margin;
+- Rural / UMa-mMTC / UMa-URLLC use vertical 8-element TXRUs at 0.8λ with
+  electrical tilts of 100° / 96° (LMLC) / 99° / 93° (mMTC 1732 m);
+- 46 dBm in 10 MHz, UE noise figure 7 dB, all UEs at 1.5 m, d2D_min = 10 m,
+  geographic wrap-around;
+- Dense Urban config A and InH use analog-beam sets (2-D DFT sub-arrays)
+  and, for InH, ceiling TRPs pointing down.
+- The building-loss mix "applies to channel model B". For channel model A
+  the data point clearly to the legacy 20 dB O2I model (TR 38.901 Table
+  7.4.3-3) in UMa: with the 80/20 low/high mix the UMa coupling gain is 8–16 dB
+  above the company mean, and with the legacy model 2–6 dB.
+
+`nrsls.config.scenario.rp180524()` builds the seven configurations the
+current antenna model covers (`rp-rural-700m`, `rp-rural-4g`, `rp-rural-lmlc`,
+`rp-mmtc-500m`, `rp-mmtc-1732m`, `rp-urllc-4g`, `rp-urllc-700m`).
+
+### Phase-1 comparison (indicative, 30 drops)
+
+`python examples/compare_rp180524.py` → `results/p1_rp180524_gaps.json`,
+`results/p1_rp180524.png`. Gap = nrsls − company mean, in dB:
+
+| Config (channel model A) | Coupling gain p5 / p50 / p95 | Geometry p5 / p50 / p95 |
+|---|---|---|
+| Rural 700 MHz | −3.3 / +0.3 / +3.6 | +0.9 / +2.4 / +1.3 |
+| Rural 4 GHz | −5.2 / −1.3 / +3.2 | −0.8 / +1.8 / +1.8 |
+| Rural LMLC (ISD 6 km) | −11.0 / −8.6 / +0.1 | −1.1 / 0.0 / +2.6 |
+| UMa-mMTC 500 m | +5.8 / +3.0 / +1.9 | +0.5 / +1.8 / +2.0 |
+| UMa-mMTC 1732 m | +3.7 / +3.0 / +2.5 | +1.1 / +1.7 / +3.7 |
+| UMa-URLLC 4 GHz | +5.3 / +5.0 / +3.5 | +0.6 / +1.8 / +1.5 |
+| UMa-URLLC 700 MHz | +5.7 / +5.7 / +2.9 | +0.3 / +1.8 / +1.4 |
+
+![RP-180524 comparison](../results/p1_rp180524.png)
+
+The company envelope is narrow (typically ±1 dB), so these gaps are real.
+They have the signature expected from the one phase-1 simplification:
+- **UMa coupling gain is 3–6 dB too high.** Phase 1 applies the full
+  sub-array gain toward the LOS direction. The eq. (8.1-1) RSRP spreads the
+  power over clusters whose zenith and azimuth spreads fall partly outside
+  the narrow 8 × 0.8λ vertical beam and the 65° element.
+- **Geometry is 1–3 dB too optimistic.** For the same reason, co-sited and
+  neighbouring sectors leak more power under multipath than toward a single
+  LOS direction. Phase 1 caps SIR at the 27 dB front-to-back limit, while
+  the companies' curves run past it.
+- **Rural coupling gain is too wide:** the tails are ±3–5 dB with the median
+  right. **LMLC is 9 dB low at the median.** This does not look like the
+  antenna effect. The pathloss/LOS set-up at 6 km ISD needs checking first
+  in phase 2.
+
+### Next steps
+1. **Phase 2:** TR 38.901 §7.5 steps 4–11 (correlated LSPs, clusters, rays)
+   and the eq. (8.1-1) port-0 RSRP. Then rerun this comparison. The target is
+   every percentile inside the company envelope, or within ±1 dB of the mean.
+2. Resolve LMLC.
+3. 2-D DFT analog-beam sub-arrays and beam-set attachment for Dense Urban
+   config A. InH with ceiling TRPs and the M.2412 Table 8-7 element.
+

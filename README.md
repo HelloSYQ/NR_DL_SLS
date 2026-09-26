@@ -42,6 +42,7 @@ python -m pytest
 | `system` | UMa, 3.5 GHz, 100 MHz (273 PRB, 30 kHz), 53 dBm, 32T4R |
 | `uma`, `umi`, `rma`, `inh-open`, `inh-mixed` | TR 38.901 §7.2 deployments |
 | `calib-uma`, `calib-umi`, `calib-inh` | TR 38.901 Table 7.8-1-style large-scale calibration at 6 GHz |
+| `rp-rural-700m`, `rp-rural-4g`, `rp-rural-lmlc`, `rp-mmtc-500m`, `rp-mmtc-1732m`, `rp-urllc-4g`, `rp-urllc-700m` | RP-180524 IMT-2020 calibration set-ups (reference data in `refs/rp180524/`) |
 
 Every field of `nrsls.ScenarioConfig` can be overridden:
 `get_preset("system", ue_per_cell=20, o2i_model="legacy")`.

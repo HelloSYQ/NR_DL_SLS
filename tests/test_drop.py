@@ -106,3 +106,15 @@ def test_los_fraction_follows_probability():
     p = los_probability("UMi", d.d2d_m[:, out], 1.5)
     n = p.size
     assert abs(d.los[:, out].mean() - p.mean()) < 4 * np.sqrt(p.mean() / n)
+
+
+@pytest.mark.parametrize("name", ["rp-rural-700m", "rp-rural-lmlc",
+                                  "rp-mmtc-1732m", "rp-urllc-4g"])
+def test_rp180524_presets(name):
+    cfg = get_preset(name)
+    assert cfg.bandwidth_hz == 10e6 and cfg.bs_tx_power_dbm == 46.0
+    assert cfg.bs_antenna.elements_per_txru == 8 and cfg.bs_antenna.dV == 0.8
+    assert cfg.min_d2d_m == 10.0 and cfg.ue_noise_figure_db == 7.0
+    d = generate_drop(cfg, np.random.default_rng(12))
+    assert np.all(d.ues.h_m == 1.5)                      # all UEs at 1.5 m
+    assert d.ues.n == 10 * 57

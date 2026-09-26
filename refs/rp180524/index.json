@@ -1,0 +1,502 @@
+[
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_4GHz_12TRxP_ModelA",
+  "metric": "coupling_gain",
+  "file": "InH_4GHz_12TRxP_ModelA_coupling_gain.csv",
+  "n_companies": 16,
+  "p5": -75.6280184151629,
+  "p50": -68.62548485520176,
+  "p95": -56.74326162573046
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_4GHz_12TRxP_ModelA",
+  "metric": "geometry",
+  "file": "InH_4GHz_12TRxP_ModelA_geometry.csv",
+  "n_companies": 16,
+  "p5": -3.3168835000788732,
+  "p50": 2.2381771162658577,
+  "p95": 14.495930398657588
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_4GHz_12TRxP_ModelB",
+  "metric": "coupling_gain",
+  "file": "InH_4GHz_12TRxP_ModelB_coupling_gain.csv",
+  "n_companies": 18,
+  "p5": -75.69644506149217,
+  "p50": -68.57191201339396,
+  "p95": -56.575102829245765
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_4GHz_12TRxP_ModelB",
+  "metric": "geometry",
+  "file": "InH_4GHz_12TRxP_ModelB_geometry.csv",
+  "n_companies": 18,
+  "p5": -3.272250104280615,
+  "p50": 2.3130114104863595,
+  "p95": 14.768413256424322
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_4GHz_36TRxP_ModelA",
+  "metric": "coupling_gain",
+  "file": "InH_4GHz_36TRxP_ModelA_coupling_gain.csv",
+  "n_companies": 15,
+  "p5": -66.725496690799,
+  "p50": -60.49034139677996,
+  "p95": -52.185860975125216
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_4GHz_36TRxP_ModelA",
+  "metric": "geometry",
+  "file": "InH_4GHz_36TRxP_ModelA_geometry.csv",
+  "n_companies": 15,
+  "p5": -5.647758557421026,
+  "p50": -1.2989818637568489,
+  "p95": 5.410764531271047
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_4GHz_36TRxP_ModelB",
+  "metric": "coupling_gain",
+  "file": "InH_4GHz_36TRxP_ModelB_coupling_gain.csv",
+  "n_companies": 16,
+  "p5": -66.85551032875102,
+  "p50": -60.54909691780985,
+  "p95": -52.12475237970118
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_4GHz_36TRxP_ModelB",
+  "metric": "geometry",
+  "file": "InH_4GHz_36TRxP_ModelB_geometry.csv",
+  "n_companies": 16,
+  "p5": -5.5752786930988165,
+  "p50": -1.1870087832777214,
+  "p95": 5.475281243678002
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_30GHz_12TRxP",
+  "metric": "coupling_gain",
+  "file": "InH_30GHz_12TRxP_coupling_gain.csv",
+  "n_companies": 17,
+  "p5": -85.56384644664027,
+  "p50": -76.00055556487676,
+  "p95": -60.15232156940978
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_30GHz_12TRxP",
+  "metric": "geometry",
+  "file": "InH_30GHz_12TRxP_geometry.csv",
+  "n_companies": 17,
+  "p5": 8.781370839446808,
+  "p50": 21.234555751954343,
+  "p95": 38.43084886176569
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_30GHz_36TRxP",
+  "metric": "coupling_gain",
+  "file": "InH_30GHz_36TRxP_coupling_gain.csv",
+  "n_companies": 14,
+  "p5": -76.15901300619645,
+  "p50": -68.17949968979792,
+  "p95": -57.60453682845218
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_30GHz_36TRxP",
+  "metric": "geometry",
+  "file": "InH_30GHz_36TRxP_geometry.csv",
+  "n_companies": 14,
+  "p5": 5.855843265673888,
+  "p50": 16.407165743355655,
+  "p95": 27.197171190830822
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_70GHz_12TRxP",
+  "metric": "coupling_gain",
+  "file": "InH_70GHz_12TRxP_coupling_gain.csv",
+  "n_companies": 16,
+  "p5": -87.72221712456151,
+  "p50": -77.56723597160432,
+  "p95": -61.983050224590926
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_70GHz_12TRxP",
+  "metric": "geometry",
+  "file": "InH_70GHz_12TRxP_geometry.csv",
+  "n_companies": 16,
+  "p5": 12.221948946467343,
+  "p50": 24.86647821561081,
+  "p95": 41.2373361880447
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_70GHz_36TRxP",
+  "metric": "coupling_gain",
+  "file": "InH_70GHz_36TRxP_coupling_gain.csv",
+  "n_companies": 12,
+  "p5": -77.72662325208141,
+  "p50": -69.93712562845825,
+  "p95": -59.39975425569278
+ },
+ {
+  "workbook": "01.IndoorHotspot-eMBB_CouplingGain_and_DLgeometry_v18.xlsx",
+  "sheet": "InH_70GHz_36TRxP",
+  "metric": "geometry",
+  "file": "InH_70GHz_36TRxP_geometry.csv",
+  "n_companies": 12,
+  "p5": 10.626457545234777,
+  "p50": 22.816652641188096,
+  "p95": 34.07731004406602
+ },
+ {
+  "workbook": "02.DenseUrban-eMBB_CouplingGain_and_DLgeometry_v22.xlsx",
+  "sheet": "DenseUrban_4GHz_ModelA",
+  "metric": "coupling_gain",
+  "file": "DenseUrban_4GHz_ModelA_coupling_gain.csv",
+  "n_companies": 16,
+  "p5": -117.70380284497138,
+  "p50": -99.15200161022695,
+  "p95": -76.09575677331567
+ },
+ {
+  "workbook": "02.DenseUrban-eMBB_CouplingGain_and_DLgeometry_v22.xlsx",
+  "sheet": "DenseUrban_4GHz_ModelA",
+  "metric": "geometry",
+  "file": "DenseUrban_4GHz_ModelA_geometry.csv",
+  "n_companies": 16,
+  "p5": 2.416728611741198,
+  "p50": 15.167665497292964,
+  "p95": 32.427771398009824
+ },
+ {
+  "workbook": "02.DenseUrban-eMBB_CouplingGain_and_DLgeometry_v22.xlsx",
+  "sheet": "DenseUrban_4GHz_ModelB",
+  "metric": "coupling_gain",
+  "file": "DenseUrban_4GHz_ModelB_coupling_gain.csv",
+  "n_companies": 18,
+  "p5": -116.5916998491441,
+  "p50": -93.3390606231236,
+  "p95": -72.50339479346864
+ },
+ {
+  "workbook": "02.DenseUrban-eMBB_CouplingGain_and_DLgeometry_v22.xlsx",
+  "sheet": "DenseUrban_4GHz_ModelB",
+  "metric": "geometry",
+  "file": "DenseUrban_4GHz_ModelB_geometry.csv",
+  "n_companies": 18,
+  "p5": 2.3250999907951417,
+  "p50": 15.013437407188778,
+  "p95": 32.274468342312424
+ },
+ {
+  "workbook": "02.DenseUrban-eMBB_CouplingGain_and_DLgeometry_v22.xlsx",
+  "sheet": "DenseUrban_30GHz",
+  "metric": "coupling_gain",
+  "file": "DenseUrban_30GHz_coupling_gain.csv",
+  "n_companies": 18,
+  "p5": -135.038864272675,
+  "p50": -108.76969067547846,
+  "p95": -85.08380385969207
+ },
+ {
+  "workbook": "02.DenseUrban-eMBB_CouplingGain_and_DLgeometry_v22.xlsx",
+  "sheet": "DenseUrban_30GHz",
+  "metric": "geometry",
+  "file": "DenseUrban_30GHz_geometry.csv",
+  "n_companies": 18,
+  "p5": -9.747932109315984,
+  "p50": 14.247120024698184,
+  "p95": 33.362364929119465
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_4GHz_ModelA",
+  "metric": "coupling_gain",
+  "file": "Rural_4GHz_ModelA_coupling_gain.csv",
+  "n_companies": 18,
+  "p5": -136.95169370714555,
+  "p50": -115.46006032757903,
+  "p95": -92.42569487260943
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_4GHz_ModelA",
+  "metric": "geometry",
+  "file": "Rural_4GHz_ModelA_geometry.csv",
+  "n_companies": 18,
+  "p5": -1.8737546173705597,
+  "p50": 7.522515130039202,
+  "p95": 24.30925785099607
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_4GHz_ModelB",
+  "metric": "coupling_gain",
+  "file": "Rural_4GHz_ModelB_coupling_gain.csv",
+  "n_companies": 20,
+  "p5": -138.42150839458517,
+  "p50": -116.5368230254566,
+  "p95": -92.7109966770308
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_4GHz_ModelB",
+  "metric": "geometry",
+  "file": "Rural_4GHz_ModelB_geometry.csv",
+  "n_companies": 20,
+  "p5": -2.1724662558113312,
+  "p50": 7.213275440659665,
+  "p95": 24.200500136742058
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_700M_ModelA",
+  "metric": "coupling_gain",
+  "file": "Rural_700M_ModelA_coupling_gain.csv",
+  "n_companies": 18,
+  "p5": -123.3718528825039,
+  "p50": -101.06801844046807,
+  "p95": -76.73275030603799
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_700M_ModelA",
+  "metric": "geometry",
+  "file": "Rural_700M_ModelA_geometry.csv",
+  "n_companies": 18,
+  "p5": -1.1525746470336997,
+  "p50": 8.5677904099291,
+  "p95": 25.132199221564655
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_700M_ModelB",
+  "metric": "coupling_gain",
+  "file": "Rural_700M_ModelB_coupling_gain.csv",
+  "n_companies": 20,
+  "p5": -123.3623090266527,
+  "p50": -100.76229698081004,
+  "p95": -76.2785511356243
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_700M_ModelB",
+  "metric": "geometry",
+  "file": "Rural_700M_ModelB_geometry.csv",
+  "n_companies": 20,
+  "p5": -1.1399348689545368,
+  "p50": 8.547678184779679,
+  "p95": 25.081329597815717
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_LMLC_ModelA",
+  "metric": "coupling_gain",
+  "file": "Rural_LMLC_ModelA_coupling_gain.csv",
+  "n_companies": 15,
+  "p5": -129.60439322262613,
+  "p50": -113.1918215510528,
+  "p95": -85.43719499738626
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_LMLC_ModelA",
+  "metric": "geometry",
+  "file": "Rural_LMLC_ModelA_geometry.csv",
+  "n_companies": 15,
+  "p5": -3.1989748307839223,
+  "p50": 4.253298805746851,
+  "p95": 21.842953642889842
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_LMLC_ModelB",
+  "metric": "coupling_gain",
+  "file": "Rural_LMLC_ModelB_coupling_gain.csv",
+  "n_companies": 16,
+  "p5": -130.4024611726406,
+  "p50": -112.80210247956748,
+  "p95": -85.54137760738536
+ },
+ {
+  "workbook": "03 Rural-eMBB_CouplingGain_and_DLgeometry_v24.xlsx",
+  "sheet": "Rural_LMLC_ModelB",
+  "metric": "geometry",
+  "file": "Rural_LMLC_ModelB_geometry.csv",
+  "n_companies": 16,
+  "p5": -3.1823447331719152,
+  "p50": 4.361517205243545,
+  "p95": 21.831498584955416
+ },
+ {
+  "workbook": "04.UrbanMacro-mMTC_CouplingGain_and_DLgeometry_v19.xlsx",
+  "sheet": "UMa_mMTC_500m_ModelA",
+  "metric": "coupling_gain",
+  "file": "UMa_mMTC_500m_ModelA_coupling_gain.csv",
+  "n_companies": 15,
+  "p5": -127.95793620398528,
+  "p50": -107.40362095008346,
+  "p95": -75.32192148261558
+ },
+ {
+  "workbook": "04.UrbanMacro-mMTC_CouplingGain_and_DLgeometry_v19.xlsx",
+  "sheet": "UMa_mMTC_500m_ModelA",
+  "metric": "geometry",
+  "file": "UMa_mMTC_500m_ModelA_geometry.csv",
+  "n_companies": 15,
+  "p5": -2.4557463173480447,
+  "p50": 5.021147308962807,
+  "p95": 22.058886410250636
+ },
+ {
+  "workbook": "04.UrbanMacro-mMTC_CouplingGain_and_DLgeometry_v19.xlsx",
+  "sheet": "UMa_mMTC_500m_ModelB",
+  "metric": "coupling_gain",
+  "file": "UMa_mMTC_500m_ModelB_coupling_gain.csv",
+  "n_companies": 16,
+  "p5": -120.28990257074004,
+  "p50": -98.59803814329568,
+  "p95": -70.61400092666645
+ },
+ {
+  "workbook": "04.UrbanMacro-mMTC_CouplingGain_and_DLgeometry_v19.xlsx",
+  "sheet": "UMa_mMTC_500m_ModelB",
+  "metric": "geometry",
+  "file": "UMa_mMTC_500m_ModelB_geometry.csv",
+  "n_companies": 16,
+  "p5": -2.3851783245612945,
+  "p50": 4.982875917176804,
+  "p95": 21.91865751255297
+ },
+ {
+  "workbook": "04.UrbanMacro-mMTC_CouplingGain_and_DLgeometry_v19.xlsx",
+  "sheet": "UMa_mMTC_1732m_ModelA",
+  "metric": "coupling_gain",
+  "file": "UMa_mMTC_1732m_ModelA_coupling_gain.csv",
+  "n_companies": 15,
+  "p5": -143.73222029641104,
+  "p50": -129.13108212506165,
+  "p95": -97.59811654809951
+ },
+ {
+  "workbook": "04.UrbanMacro-mMTC_CouplingGain_and_DLgeometry_v19.xlsx",
+  "sheet": "UMa_mMTC_1732m_ModelA",
+  "metric": "geometry",
+  "file": "UMa_mMTC_1732m_ModelA_geometry.csv",
+  "n_companies": 15,
+  "p5": -5.359461594344731,
+  "p50": 1.4986223276368584,
+  "p95": 16.363003994290303
+ },
+ {
+  "workbook": "04.UrbanMacro-mMTC_CouplingGain_and_DLgeometry_v19.xlsx",
+  "sheet": "UMa_mMTC_1732m_ModelB",
+  "metric": "coupling_gain",
+  "file": "UMa_mMTC_1732m_ModelB_coupling_gain.csv",
+  "n_companies": 16,
+  "p5": -136.41365084654942,
+  "p50": -118.3216927063568,
+  "p95": -93.51244053339192
+ },
+ {
+  "workbook": "04.UrbanMacro-mMTC_CouplingGain_and_DLgeometry_v19.xlsx",
+  "sheet": "UMa_mMTC_1732m_ModelB",
+  "metric": "geometry",
+  "file": "UMa_mMTC_1732m_ModelB_geometry.csv",
+  "n_companies": 16,
+  "p5": -4.264132372446177,
+  "p50": 2.0559832683149235,
+  "p95": 17.050742223045837
+ },
+ {
+  "workbook": "05.UrbanMacro-URLLC_CouplingGain_and_DLgeometry_v20.xlsx",
+  "sheet": "UMa_URLLC_4GHz_ModelA",
+  "metric": "coupling_gain",
+  "file": "UMa_URLLC_4GHz_ModelA_coupling_gain.csv",
+  "n_companies": 15,
+  "p5": -134.28359644692003,
+  "p50": -104.46035960458224,
+  "p95": -78.28500475358884
+ },
+ {
+  "workbook": "05.UrbanMacro-URLLC_CouplingGain_and_DLgeometry_v20.xlsx",
+  "sheet": "UMa_URLLC_4GHz_ModelA",
+  "metric": "geometry",
+  "file": "UMa_URLLC_4GHz_ModelA_geometry.csv",
+  "n_companies": 15,
+  "p5": -2.4751155419069892,
+  "p50": 5.155340733460259,
+  "p95": 22.353255321061773
+ },
+ {
+  "workbook": "05.UrbanMacro-URLLC_CouplingGain_and_DLgeometry_v20.xlsx",
+  "sheet": "UMa_URLLC_4GHz_ModelB",
+  "metric": "coupling_gain",
+  "file": "UMa_URLLC_4GHz_ModelB_coupling_gain.csv",
+  "n_companies": 17,
+  "p5": -127.29344153886699,
+  "p50": -103.51890478862548,
+  "p95": -77.70020423087828
+ },
+ {
+  "workbook": "05.UrbanMacro-URLLC_CouplingGain_and_DLgeometry_v20.xlsx",
+  "sheet": "UMa_URLLC_4GHz_ModelB",
+  "metric": "geometry",
+  "file": "UMa_URLLC_4GHz_ModelB_geometry.csv",
+  "n_companies": 17,
+  "p5": -2.2749863839340136,
+  "p50": 5.440273436350601,
+  "p95": 22.589186371591175
+ },
+ {
+  "workbook": "05.UrbanMacro-URLLC_CouplingGain_and_DLgeometry_v20.xlsx",
+  "sheet": "UMa_URLLC_700MHz_ModelA",
+  "metric": "coupling_gain",
+  "file": "UMa_URLLC_700MHz_ModelA_coupling_gain.csv",
+  "n_companies": 15,
+  "p5": -120.64446662137644,
+  "p50": -91.2537201028393,
+  "p95": -64.48713475166045
+ },
+ {
+  "workbook": "05.UrbanMacro-URLLC_CouplingGain_and_DLgeometry_v20.xlsx",
+  "sheet": "UMa_URLLC_700MHz_ModelA",
+  "metric": "geometry",
+  "file": "UMa_URLLC_700MHz_ModelA_geometry.csv",
+  "n_companies": 15,
+  "p5": -2.274921670706115,
+  "p50": 5.282019268681543,
+  "p95": 22.549510003525178
+ },
+ {
+  "workbook": "05.UrbanMacro-URLLC_CouplingGain_and_DLgeometry_v20.xlsx",
+  "sheet": "UMa_URLLC_700MHz_ModelB",
+  "metric": "coupling_gain",
+  "file": "UMa_URLLC_700MHz_ModelB_coupling_gain.csv",
+  "n_companies": 16,
+  "p5": -110.78478728334197,
+  "p50": -90.08147817599678,
+  "p95": -64.10383304975694
+ },
+ {
+  "workbook": "05.UrbanMacro-URLLC_CouplingGain_and_DLgeometry_v20.xlsx",
+  "sheet": "UMa_URLLC_700MHz_ModelB",
+  "metric": "geometry",
+  "file": "UMa_URLLC_700MHz_ModelB_geometry.csv",
+  "n_companies": 16,
+  "p5": -2.2171668650025254,
+  "p50": 5.301714408297096,
+  "p95": 22.774561168120282
+ }
+]
