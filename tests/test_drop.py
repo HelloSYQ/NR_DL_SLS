@@ -54,7 +54,8 @@ def test_o2i_links_and_penetration(drop):
 
 
 def test_legacy_o2i_is_link_specific():
-    d = generate_drop(get_preset("uma", o2i_model="legacy"),
+    d = generate_drop(get_preset("uma", o2i_model="legacy",
+                                 coupling_model="los"),
                       np.random.default_rng(6))
     pen = d.penetration_db[:, d.ues.o2i]
     assert np.all(pen >= 20.0) and np.all(pen <= 20.0 + 12.5)
@@ -64,7 +65,7 @@ def test_legacy_o2i_is_link_specific():
 def test_wrap_around_makes_all_sites_equivalent():
     """UTs dropped in the centre site and in the outer ring see the same
     statistics with wrap-around; without it the outer ring looks better."""
-    cfg = get_preset("uma", ue_per_cell=20)
+    cfg = get_preset("uma", ue_per_cell=20, coupling_model="los")
     st = run_large_scale(cfg, n_drops=8, seed=11)
     inner, outer = st.geometry_db[st.drop_ring == 0], st.geometry_db[st.drop_ring == 2]
     ks_crit = 1.63 * np.sqrt(1 / len(inner) + 1 / len(outer))   # 1 % level
@@ -78,10 +79,10 @@ def test_wrap_around_makes_all_sites_equivalent():
 
 
 def test_runs_are_reproducible_and_parallel_safe():
-    cfg = get_preset("umi")
-    a = run_large_scale(cfg, n_drops=3, seed=7)
-    b = run_large_scale(cfg, n_drops=3, seed=7, n_jobs=2)
-    c = run_large_scale(cfg, n_drops=3, seed=8)
+    cfg = get_preset("umi", ue_per_cell=4)       # multipath coupling
+    a = run_large_scale(cfg, n_drops=2, seed=7)
+    b = run_large_scale(cfg, n_drops=2, seed=7, n_jobs=2)
+    c = run_large_scale(cfg, n_drops=2, seed=8)
     # same random streams; BLAS thread counts may differ in the last bits
     assert np.array_equal(a.los, b.los) and np.array_equal(a.o2i, b.o2i)
     assert np.allclose(a.geometry_db, b.geometry_db, rtol=0, atol=1e-9)
@@ -100,7 +101,7 @@ def test_inh_drop():
 def test_los_fraction_follows_probability():
     """Across many links the LOS share matches the mean LOS probability."""
     from nrsls.propagation.los import los_probability
-    d = generate_drop(get_preset("umi", ue_per_cell=30),
+    d = generate_drop(get_preset("umi", ue_per_cell=30, coupling_model="los"),
                       np.random.default_rng(10))
     out = ~d.ues.o2i
     p = los_probability("UMi", d.d2d_m[:, out], 1.5)
@@ -111,7 +112,7 @@ def test_los_fraction_follows_probability():
 @pytest.mark.parametrize("name", ["rp-rural-700m", "rp-rural-lmlc",
                                   "rp-mmtc-1732m", "rp-urllc-4g"])
 def test_rp180524_presets(name):
-    cfg = get_preset(name)
+    cfg = get_preset(name, coupling_model="los")
     assert cfg.bandwidth_hz == 10e6 and cfg.bs_tx_power_dbm == 46.0
     assert cfg.bs_antenna.elements_per_txru == 8 and cfg.bs_antenna.dV == 0.8
     assert cfg.min_d2d_m == 10.0 and cfg.ue_noise_figure_db == 7.0

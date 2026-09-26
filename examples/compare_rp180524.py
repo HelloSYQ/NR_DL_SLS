@@ -7,11 +7,11 @@ run large-scale drops and report the gap to the company mean at the
 inside the companies' min-max envelope.  Needs refs/rp180524 (run
 examples/import_rp180524.py first).
 
-Phase 1 computes the BS gain toward the LOS direction; the calibration uses
-the multi-path RSRP of TR 36.873 eq. (8.1-1), so this comparison is
-indicative until phase 2.
+The coupling gain is the multi-path port-0 RSRP of TR 36.873 eq. (8.1-1),
+as in the calibration (``--coupling los`` reproduces the phase-1 model,
+which uses the BS gain toward the LOS direction).
 
-    python examples/compare_rp180524.py [--drops 30] [--jobs 4]
+    python examples/compare_rp180524.py [--drops 30] [--jobs 4] [--coupling los]
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ def compare(samples, ref):
             "in_envelope": float(np.mean((s >= lo) & (s <= hi)))}
 
 
-def figure(results, path):
+def figure(results, path, label):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -75,7 +75,7 @@ def figure(results, path):
                     label="company mean")
             x = np.sort(st[metric])
             ax.plot(x, np.arange(1, len(x) + 1) / len(x), color=cdf.SERIES[1],
-                    lw=cdf.LINE_PT, label="nrsls phase 1 (LOS-direction gain)")
+                    lw=cdf.LINE_PT, label=label)
             ax.set_ylim(0, 1)
             ax.set_xlabel(("Coupling gain" if col == 0 else "Geometry")
                           + " [dB]", fontsize=9)
@@ -85,7 +85,7 @@ def figure(results, path):
             leg = ax.legend(fontsize=8, frameon=False, loc="lower right")
             for t in leg.get_texts():
                 t.set_color(cdf.INK_2)
-    fig.suptitle("RP-180524 calibration data vs nrsls phase 1 (indicative)",
+    fig.suptitle("RP-180524 calibration data (channel model A) vs nrsls",
                  x=0.01, ha="left", fontsize=11, color=cdf.INK)
     fig.tight_layout()
     fig.savefig(path, dpi=130, facecolor=cdf.SURFACE)
@@ -97,10 +97,12 @@ def main():
     ap.add_argument("--drops", type=int, default=30)
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--coupling", default="multipath", choices=("multipath", "los"))
     args = ap.parse_args()
     summary, samples = {}, {}
     for name, sheet in SHEETS.items():
-        st = run_large_scale(get_preset(name), args.drops, args.seed, args.jobs)
+        st = run_large_scale(get_preset(name, coupling_model=args.coupling),
+                             args.drops, args.seed, args.jobs)
         samples[name] = {"coupling_gain": st.coupling_gain_db,
                          "geometry": st.geometry_db}
         summary[name] = {"sheet": sheet}
@@ -114,9 +116,12 @@ def main():
             f"{v:+5.1f}" for v in g["gap_db"].values())
             + f" (in env {g['in_envelope']:.0%})")
     os.makedirs(OUT, exist_ok=True)
-    with open(os.path.join(OUT, "p1_rp180524_gaps.json"), "w") as f:
+    tag = "p2" if args.coupling == "multipath" else "p1"
+    with open(os.path.join(OUT, f"{tag}_rp180524_gaps.json"), "w") as f:
         json.dump(summary, f, indent=1)
-    figure(samples, os.path.join(OUT, "p1_rp180524.png"))
+    label = ("nrsls: multipath port-0 RSRP" if args.coupling == "multipath"
+             else "nrsls: gain toward the LOS direction")
+    figure(samples, os.path.join(OUT, f"{tag}_rp180524.png"), label)
 
 
 if __name__ == "__main__":

@@ -136,9 +136,13 @@ class ScenarioConfig:
     building_height_m: float = 5.0
     street_width_m: float = 20.0
 
-    # --- shadow fading ---
+    # --- large-scale parameters / coupling ---
     shadow_fading: bool = True
-    sf_spatial_correlation: bool = True
+    sf_spatial_correlation: bool = True        # spatially correlated LSPs
+    # 'multipath': port-0 RSRP summed over the TR 38.901 rays (TR 36.873
+    # eq. 8.1-1, as in the RP-180524 calibration); 'los': BS gain toward the
+    # LOS direction only (phase-1 model)
+    coupling_model: str = "multipath"
 
     # --- antennas ---
     bs_antenna: BSAntennaConfig = field(default_factory=BSAntennaConfig)
@@ -150,6 +154,8 @@ class ScenarioConfig:
                              f"expected one of {SCENARIOS}")
         if self.o2i_model not in ("low", "high", "mixed", "legacy"):
             raise ValueError(f"unknown O2I model {self.o2i_model!r}")
+        if self.coupling_model not in ("multipath", "los"):
+            raise ValueError(f"unknown coupling model {self.coupling_model!r}")
         if self.o2i_model == "legacy" and self.family not in ("uma", "umi"):
             raise ValueError("the legacy O2I model covers UMa and UMi only")
 

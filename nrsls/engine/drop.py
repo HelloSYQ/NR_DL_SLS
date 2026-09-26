@@ -1,14 +1,18 @@
-"""One simulation drop: geometry and large-scale propagation.
+"""One simulation drop: geometry, large-scale parameters and port-0 RSRP.
 
-Phase 1 covers TR 38.901 clause 7.5 steps 1-4 without fast fading:
+TR 38.901 clause 7.5:
 
   1. layout, UT drop (indoor/outdoor, floors, cars) and wrap-around;
   2. LOS state per link (Table 7.4.2-1, outdoor distance for O2I UTs);
   3. basic pathloss (Table 7.4.1-1) + O2I / in-car penetration (7.4.3);
-  4. shadow fading (spatially correlated, per site and link condition);
+  4. the seven LSPs (SF, K, DS, ASD, ASA, ZSD, ZSA), spatially and
+     cross-correlated, per site and link condition;
+  5-10. (``coupling_model='multipath'``) clusters and rays per link;
 
-then the port-0 antenna gain toward each UT, the coupling gain, the serving
-cell (strongest RSRP) and the geometry.  Link quantities are per site
+then the port-0 gain of every cell toward every UT -- the ray-summed RSRP
+of TR 36.873 eq. (8.1-1), or the gain toward the LOS direction for
+``coupling_model='los'`` -- the coupling gain, the serving cell (strongest
+RSRP) and the geometry.  Link quantities are per site
 (S, U): co-sited sectors share the LOS state, pathloss and shadowing.  Cell
 quantities are per cell (C, U).
 """
@@ -23,6 +27,8 @@ from ..antenna.array import BSAntenna
 from ..config.scenario import ScenarioConfig
 from ..link import association, link_budget
 from ..propagation import lsp, o2i as o2i_mod, pathloss
+from ..link.rsrp import multipath_gain
+from ..propagation.clusters import generate_clusters
 from ..propagation.los import los_probability
 from ..topology.layout import Layout, build_layout
 from ..topology.ue_drop import UEs, drop_ues
@@ -43,8 +49,9 @@ class LargeScaleDrop:
     pathloss_db: np.ndarray       # PL_b
     shadow_fading_db: np.ndarray
     penetration_db: np.ndarray    # O2I + in-car loss
+    lsps: lsp.LSPs                # all seven LSPs per link
     # per cell (C, U)
-    bs_gain_db: np.ndarray
+    bs_gain_db: np.ndarray        # port-0 antenna (+ multipath) gain
     coupling_gain_db: np.ndarray
     rx_power_dbm: np.ndarray
     # per UT
@@ -99,15 +106,14 @@ def generate_drop(cfg: ScenarioConfig, rng) -> LargeScaleDrop:
         building_height=cfg.building_height_m,
         street_width=cfg.street_width_m)
 
-    # --- shadow fading ---
+    # --- large-scale parameters (SF, K, DS, ASD, ASA, ZSD, ZSA) ---
     cond = pathloss.link_condition(los, o2i)
-    if cfg.shadow_fading:
-        sigma = pathloss.shadow_fading_std_db(fam, cond, d2d, h_bs, h_ut,
-                                              cfg.carrier_freq_hz)
-        sf = lsp.shadow_fading_db(fam, cond, sigma, ues.xy, ues.floor, rng,
-                                  spatial=cfg.sf_spatial_correlation)
-    else:
-        sf = np.zeros(d2d.shape)
+    sigma = pathloss.shadow_fading_std_db(fam, cond, d2d, h_bs, h_ut,
+                                          cfg.carrier_freq_hz)
+    lsps = lsp.draw_lsps(fam, cfg.carrier_freq_ghz, cond, los, d2d, h_bs, h_ut,
+                         sigma if cfg.shadow_fading else np.zeros(d2d.shape),
+                         ues.xy, ues.floor, rng, spatial=cfg.sf_spatial_correlation)
+    sf = lsps.sf_db
 
     # --- penetration losses ---
     if cfg.o2i_model == "legacy":
@@ -119,12 +125,27 @@ def generate_drop(cfg: ScenarioConfig, rng) -> LargeScaleDrop:
     car = o2i_mod.in_car_loss_db(ues.in_car, rng, *cfg.car_loss_db)
     pen = pen + car[None, :]
 
-    # --- per-cell antenna gain and coupling gain ---
+    # --- per-cell port-0 gain toward every UT ---
     ant = BSAntenna(cfg.bs_antenna)
     site = layout.cell_site
-    gain = np.stack([ant.port_gain_db(az[s], zen[s], layout.cell_bearing_deg[c])
-                     for c, s in enumerate(site)])
-    cg = gain + cfg.ue_antenna.gain_dbi - (pl + sf + pen)[site]
+    gain = np.empty((layout.n_cells, n_ue))
+    if cfg.coupling_model == "los":
+        for c, s in enumerate(site):
+            gain[c] = ant.port_gain_db(az[s], zen[s], layout.cell_bearing_deg[c])
+    else:
+        for s in range(n_sites):
+            ls = lsp.LSPs(**{k: np.broadcast_to(v, d2d.shape)[s]
+                             for k, v in vars(lsps).items()})
+            cl = generate_clusters(fam, cfg.carrier_freq_ghz, cond[s], ls,
+                                   az[s], zen[s], rng)
+            for c in np.nonzero(site == s)[0]:
+                b = layout.cell_bearing_deg[c]
+                g = multipath_gain(
+                    cl, lambda a, z, b=b: ant.port0_field(a, z, b),
+                    cfg.ue_antenna.P)
+                gain[c] = 10 * np.log10(np.maximum(g, 1e-30))
+    ue_gain = cfg.ue_antenna.gain_dbi if cfg.coupling_model == "los" else 0.0
+    cg = gain + ue_gain - (pl + sf + pen)[site]
     rx = cfg.bs_tx_power_dbm + cg
 
     serving = association.associate(cg)
@@ -134,6 +155,6 @@ def generate_drop(cfg: ScenarioConfig, rng) -> LargeScaleDrop:
     return LargeScaleDrop(
         cfg=cfg, layout=layout, ues=ues, d2d_m=d2d, d3d_m=d3d, az_deg=az,
         zen_deg=zen, los=los, condition=cond, pathloss_db=pl,
-        shadow_fading_db=sf, penetration_db=np.asarray(pen),
+        shadow_fading_db=sf, penetration_db=np.asarray(pen), lsps=lsps,
         bs_gain_db=gain, coupling_gain_db=cg, rx_power_dbm=rx,
         serving_cell=serving, geometry_db=geom, noise_dbm=noise)
