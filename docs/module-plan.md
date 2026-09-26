@@ -11,7 +11,7 @@ average and 5 %-ile spectral efficiency).
 
 Reference specs: TR 38.901 (§7.2–7.6 scenarios, pathloss, LOS, O2I, fast
 fading, §7.8 calibration), TS 38.211/212/214 (numerology, MCS/TBS, CSI,
-Type-I codebook), TR 38.802 / TR 36.814 (evaluation assumptions, traffic
+Type-I and Rel-16 enhanced Type-II codebooks), TR 38.802 / TR 36.814 (evaluation assumptions, traffic
 models), ITU-R M.2412 (IMT-2020 test environments and KPIs).
 
 ---
@@ -26,7 +26,7 @@ dependency (`pip install git+…/Claude@<commit>`) and does not copy them.
 | `link_abstraction.py` | PHY abstraction: BICM MI, MIESM effective SINR, BLER waterfall, `required_eff_sinr_db` | none (optional: export per-MCS AWGN BLER tables) |
 | `mcs_tables.py`, `tbs.py`, `resource_grid.py` | MCS/CQI tables, TBS, DM-RS overhead | none |
 | `receiver.batch_mmse_sinr` | per-RB post-equaliser SINR | **extend** to MMSE-IRC with a coloured interference covariance `R_I` (today it assumes white noise only) |
-| `csi.compute_csi`, `cqi_required_sinr_db` | RI/CQI selection logic | **extend**: interference-aware (CSI-IM), Type-I codebook PMI, sub-band CQI |
+| `csi.compute_csi`, `cqi_required_sinr_db` | RI/CQI selection logic | **extend**: interference-aware (CSI-IM), Type-I and eType-II codebook PMI, sub-band CQI |
 | `scheduler.Scheduler` (OLLA, CQI→MCS) | per-UE link adaptation | wrap per UE; the resource allocation moves to the multi-UE scheduler |
 | `channel_models`: `build_panel`, `rotation_matrix`, `element_field`, `_location_phase`, CDL ray machinery | antenna panels, element pattern, orientation, ray summation | reused inside the new 38.901 stochastic (UMa/UMi/InH/RMa) channel |
 | `config.py` dataclasses | carrier / PDSCH / antenna / HARQ sub-configs | wrapped by the SLS scenario config |
@@ -56,7 +56,11 @@ nrsls/
                      association.py     # serving-cell selection (RSRP / coupling loss incl. antenna gain)
                      interference.py    # per-UE interferer set: K strongest with full MIMO H, rest wideband
   phy/               sinr.py            # post-MMSE-IRC per-RB SINR with R_I (wraps nrdlsim receiver)
-                     codebook.py        # TS 38.214 Type-I single-panel codebook (N1,N2,O1,O2), PMI search
+                     codebook/
+                       common.py        # 2-D DFT beam grid (N1,N2,O1,O2), port layout, codebook config (shared)
+                       type1.py         # TS 38.214 §5.2.2.2.1 Type-I single-panel: codebook + PMI search
+                       etype2.py        # TS 38.214 §5.2.2.2.5 Rel-16 eType-II: SD beams, FD DFT basis, quantised coefficients
+                       payload.py       # CSI report size (UCI bits) per codebook config
                      csi.py             # CSI-RS/CSI-IM: RI/PMI/CQI (wideband + sub-band), report delay
                      l2s.py             # adapter to nrdlsim MIESM + BLER (+ HARQ chase combining)
   mac/               scheduler.py       # PF / RR, per-RBG frequency-selective, SU-MIMO (MU-MIMO later)
@@ -159,14 +163,54 @@ LSPs, following §7.5 steps 5–11:
   `batch_mmse_sinr` generalised from `noise_var·I` to `R_I`. Implemented by whitening, `H̃ = R_I^{-1/2} H_s W_s`, then calling
   the existing `nrdlsim.receiver.batch_mmse_sinr(H̃, 1.0)`. MMSE (non-IRC) is
   available as a baseline.
-- `codebook.py`: TS 38.214 §5.2.2.2.1 **Type-I single-panel** codebook
-  (N1, N2, O1, O2, ranks 1–8, i1/i2 search). This replaces the LLS SVD proxy
-  for realistic PMI. SVD is kept as an "ideal / reciprocity" option (TDD SRS).
+- `codebook/`: two codebooks built from the same 2-D DFT beam grid
+  (`common.py`). This grid covers the port layout (N1, N2), the oversampling
+  (O1, O2) and the dual-pol port ordering of the TXRU array in §3.3. Both
+  codebooks replace the LLS SVD proxy, and both are selected with the same
+  interface, `select_pmi(H_est, R_I, rank) -> (W[rb, n_port, rank], report)`.
+  SVD stays as the "ideal / reciprocity" reference (TDD SRS).
+  - `type1.py`: **Type-I single-panel** (§5.2.2.2.1, Tables 5.2.2.2.1-5…12).
+    Ranks 1–8, codebook modes 1/2. The PMI is i1 = (i1,1, i1,2, i1,3) for the
+    wideband beam (group) and the layer-2 beam offset. i2 is the co-phasing,
+    wideband or per sub-band. The search is exhaustive over i1 and i2, and
+    the metric is the post-IRC mutual information (capacity) summed over the
+    band.
+  - `etype2.py`: **Rel-16 enhanced Type-II** (§5.2.2.2.5), ranks 1–4.
+    Each layer's precoder is `W = W1 · W̃2 · W_fᴴ`:
+    - `W1`: L orthogonal spatial-domain (SD) beams per polarisation, from one
+      rotated orthogonal group (q1, q2). L ∈ {2, 4, 6}.
+    - `W_f`: Mv frequency-domain DFT basis vectors out of N3 PMI sub-bands.
+      Mv = ⌈p_v · N3 / R⌉ with R ∈ {1, 2} sub-bands per CQI sub-band, and the
+      window is fixed by M_initial when N3 > 19.
+    - `W̃2`: 2L × Mv combining coefficients. At most K0 = ⌈β · 2L · M1⌉
+      non-zero coefficients per layer (2K0 in total over all layers), marked
+      in a bitmap. Each has a 3-bit differential amplitude (8 levels) and a
+      16-PSK phase (4 bits). There is one reference amplitude per
+      polarisation (4 bits, 16 levels), and the strongest-coefficient
+      indicator (SCI) sets the strongest coefficient to 1.
+    - Parameter combinations 1–8 of Table 5.2.2.2.5-1 give (L, p_v, β),
+      with the rank-3/4 restrictions.
+    - UE-side derivation:
+      1. Take the dominant eigenvectors of the whitened channel per PMI
+         sub-band.
+      2. Pick the SD beams with the highest projected power.
+      3. Project onto the FD DFT basis and keep the strongest Mv.
+      4. Keep the K0 largest coefficients and quantise them.
+      5. Normalise the result as in §5.2.2.2.5.
+    - The quantisation loss is visible: `etype2` against unquantised SVD, at
+      each parameter combination, is a built-in comparison.
+  - `payload.py`: the CSI part-1/part-2 UCI size per report (§6.3.2.1.2 of
+    TS 38.212 for field sizes). This gives SE against feedback overhead for
+    Type-I and each eType-II combination.
 - `csi.py`: CSI measured on the **delayed** channel (`CSIFeedbackChannel`
   reused). The interference is measured on CSI-IM, i.e. the interference seen
   in the measurement slot, which differs from the data slot and causes the
-  flash-light effect. Output: RI, wideband PMI, wideband + sub-band CQI. The
-  rank/CQI selection reuses `cqi_required_sinr_db`.
+  flash-light effect. Output: RI, PMI (Type-I wideband/sub-band, or
+  eType-II), wideband + sub-band CQI. The CQI is computed with the
+  *quantised* precoder the gNB will use, so a coarse codebook shows up in the
+  CQI and the MCS, not just in the precoder. The rank/CQI selection reuses
+  `cqi_required_sinr_db`. The codebook type and its parameters are set per
+  UE in the scenario config (`csi.codebook = 'type1' | 'etype2' | 'svd'`).
 - `l2s.py`: thin adapter to `nrdlsim.link_abstraction`. It takes the per-RB
   SINRs of the allocated RBs and computes the MIESM effective SINR at the
   MCS modulation order, then BLER → ACK/NACK. HARQ chase combining adds the
@@ -263,9 +307,9 @@ dominant cost. The plan to keep it tractable:
 |---|---|---|
 | **P1 – Geometry calibration** | scenario config, hex layout + wrap-around, UE drop, pathloss/LOS/O2I/SF, antenna (TXRU virtualisation), association, coupling loss & geometry SINR | coupling-loss / geometry CDFs within ~1 dB of the TR 38.901 §7.8 calibration (UMa, UMi, InH) |
 | **P2 – Fast fading** | LSPs with spatial consistency, §7.5 cluster/ray generator (shared kernel with LLS CDL), H per RB per slot | DS/ASD/ZSD/singular-value CDFs vs §7.8 calibration |
-| **P3 – Full-buffer SU-MIMO** | MMSE-IRC SINR, SVD precoding first then Type-I codebook, CSI with delay, PF scheduler, per-UE OLLA, multi-process HARQ, L2S | cell avg / 5 %-ile SE in line with 38.802 / M.2412 industry results; LLS↔SLS regression passes |
+| **P3 – Full-buffer SU-MIMO** | MMSE-IRC SINR, SVD precoding first, then Type-I and Rel-16 eType-II codebooks (with CSI payload size), CSI with delay, PF scheduler, per-UE OLLA, multi-process HARQ, L2S | cell avg / 5 %-ile SE in line with 38.802 / M.2412 industry results; LLS↔SLS regression passes |
 | **P4 – Traffic & load** | FTP model 1/3, RU-dependent interference, UPT metrics | UPT vs RU curves |
-| **P5 – Extensions** | MU-MIMO, sub-band CQI/PMI, Type-II codebook, TDD pattern + SRS reciprocity, FR2 (beam management, phase noise), UL | per-feature |
+| **P5 – Extensions** | MU-MIMO (eType-II is the main enabler), Type-I multi-panel, Rel-17 FeType-II port selection, TDD pattern + SRS reciprocity, FR2 (beam management, phase noise), UL | per-feature |
 
 ---
 
@@ -273,7 +317,11 @@ dominant cost. The plan to keep it tractable:
 - Unit tests: pathloss formulas against spot values; LOS probabilities;
   LSP statistics (mean/std/cross-correlation) recovered from many draws;
   spatial-correlation decay; wrap-around distances; Type-I codebook
-  orthogonality and size; IRC SINR equals MMSE SINR when R_I = N₀I; PF
+  size and unit-norm/orthogonal columns against the 38.214 tables; eType-II:
+  FD basis and SD beam orthogonality, K0/bitmap limits per parameter
+  combination, amplitude/phase quantisation round-trip, the reconstructed
+  precoder converging to the SVD precoder as (L, p_v, β) grow, and a payload
+  size matching hand-computed spec values; IRC SINR equals MMSE SINR when R_I = N₀I; PF
   fairness on a static toy case.
 - Regression: the LLS↔SLS single-link equivalence (§5); determinism under a
   fixed seed; serial vs parallel drops give identical results.
@@ -283,8 +331,9 @@ dominant cost. The plan to keep it tractable:
 ## 8. Open decisions (defaults proposed)
 1. **First scenario**: UMa 3.5 GHz, 100 MHz @ 30 kHz, 32T4R (proposed), or
    Dense-Urban M.2412 (4 GHz, 200 MHz)?
-2. **Duplex**: FDD-style CSI with Type-I PMI (proposed), or TDD reciprocity
-   (SVD on SRS) first?
+2. **CSI**: ~~decided~~ both Type-I single-panel and Rel-16 eType-II are
+   built in P3 (FDD-style CSI), with SVD kept as the ideal/reciprocity
+   reference.
 3. **Dependency on `nrdlsim`**: pinned pip/git dependency (proposed) or a
    git submodule? This includes a small upstream refactor in `nrdlsim`: the
    shared ray-summation kernel and an optional `R_I` argument in the SINR.
