@@ -29,6 +29,7 @@ from ..link import association, link_budget
 from ..propagation import lsp, o2i as o2i_mod, pathloss
 from ..link.rsrp import multipath_gain
 from ..propagation.clusters import generate_clusters
+from ..propagation.fast_fading import subset_clusters
 from ..propagation.los import los_probability
 from ..topology.layout import Layout, build_layout
 from ..topology.ue_drop import UEs, drop_ues
@@ -58,6 +59,9 @@ class LargeScaleDrop:
     serving_cell: np.ndarray
     geometry_db: np.ndarray
     noise_dbm: float
+    # clusters/rays of every (site, UT) link, one entry per site (compact
+    # float32 copies), kept only when requested (phase-3 channel synthesis)
+    clusters: list | None = None
 
     @property
     def serving_site(self) -> np.ndarray:
@@ -72,7 +76,7 @@ class LargeScaleDrop:
         return self.coupling_gain_db[self.serving_cell, np.arange(self.ues.n)]
 
 
-def generate_drop(cfg: ScenarioConfig, rng) -> LargeScaleDrop:
+def generate_drop(cfg: ScenarioConfig, rng, keep_clusters: bool = False) -> LargeScaleDrop:
     layout = build_layout(cfg)
     ues = drop_ues(cfg, layout, rng)
     n_sites, n_ue = layout.n_sites, ues.n
@@ -130,6 +134,9 @@ def generate_drop(cfg: ScenarioConfig, rng) -> LargeScaleDrop:
     ant = BSAntenna(cfg.bs_antenna)
     site = layout.cell_site
     gain = np.empty((layout.n_cells, n_ue))
+    kept = [] if keep_clusters else None
+    if keep_clusters and cfg.coupling_model != "multipath":
+        raise ValueError("keep_clusters needs coupling_model='multipath'")
     if cfg.coupling_model == "los":
         for c, s in enumerate(site):
             gain[c] = ant.port_gain_db(az[s], zen[s], layout.cell_bearing_deg[c])
@@ -145,6 +152,8 @@ def generate_drop(cfg: ScenarioConfig, rng) -> LargeScaleDrop:
                     cl, lambda a, z, b=b: ant.port0_field(a, z, b),
                     cfg.ue_antenna.P)
                 gain[c] = 10 * np.log10(np.maximum(g, 1e-30))
+            if keep_clusters:
+                kept.append(subset_clusters(cl, np.arange(n_ue)))
     ue_gain = cfg.ue_antenna.gain_dbi if cfg.coupling_model == "los" else 0.0
     cg = gain + ue_gain - (pl + sf + pen)[site]
     rx = cfg.bs_tx_power_dbm + cg
@@ -158,4 +167,5 @@ def generate_drop(cfg: ScenarioConfig, rng) -> LargeScaleDrop:
         zen_deg=zen, los=los, condition=cond, pathloss_db=pl,
         shadow_fading_db=sf, penetration_db=np.asarray(pen), lsps=lsps,
         bs_gain_db=gain, coupling_gain_db=cg, rx_power_dbm=rx,
-        serving_cell=serving, geometry_db=geom, noise_dbm=noise)
+        serving_cell=serving, geometry_db=geom, noise_dbm=noise,
+        clusters=kept)
