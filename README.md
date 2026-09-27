@@ -12,7 +12,11 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   port-0 RSRP and channel matrices H(f, t). The simulator matches the 3GPP
   IMT-2020 calibration data (RP-180524 / TR 37.910 Annex A) in all 9
   configurations it covers; see [`docs/calibration-p2.md`](docs/calibration-p2.md).
-- **Next:** phase 3, full-buffer SU-MIMO with Type-I / eType-II CSI.
+- **Phase 3 (full-buffer SU-MIMO):** MMSE-IRC, Type-I and Rel-16 eType-II
+  CSI (plus SVD reference), PF scheduler, OLLA, HARQ, MIESM L2S. UMa 3.5 GHz
+  32T4R: cell SE 5.84 / 6.13 / 6.27 bit/s/Hz (Type-I / eType-II / SVD); see
+  [`docs/results-p3.md`](docs/results-p3.md).
+- **Next:** MU-MIMO.
 
 ## Install
 
@@ -35,6 +39,9 @@ python run_sls.py --preset calib-uma calib-umi calib-inh --drops 50 --jobs 4 \
 
 # the phase-1 figures in results/
 python examples/plot_large_scale.py
+
+# phase 3: full-buffer SU-MIMO, Type-I vs eType-II vs SVD
+python examples/run_full_buffer.py --drops 4 --jobs 4
 
 # tests
 python -m pytest
@@ -63,7 +70,10 @@ nrsls/
   antenna/array.py       panel + TXRU virtualisation (element pattern from nrdlsim)
   propagation/           pathloss, LOS, O2I / in-car loss, LSPs, clusters/rays, H(f,t)
   link/                  noise, geometry, multipath port-0 RSRP; association
-  engine/                one drop (drop.py), multi-drop driver (simulator.py)
+  phy/                   IRC SINR, Type-I / eType-II codebooks, CSI (RI/PMI/CQI)
+  mac/                   CQI -> MCS, OLLA
+  engine/                one drop (drop.py), multi-drop driver (simulator.py),
+                         full-buffer SU-MIMO loop (fullbuffer.py)
   metrics/               CDFs, percentiles, reference-curve comparison
   plots/                 CDF plotting
 run_sls.py               command-line runner
