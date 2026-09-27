@@ -1,7 +1,8 @@
 # NR Downlink System-Level Simulator (`nrsls`) — Module Plan
 
 Status: **P1, P2 and P3 implemented** (see [calibration-p1.md](calibration-p1.md),
-[calibration-p2.md](calibration-p2.md) and [results-p3.md](results-p3.md)). P2 matches the RP-180524 /
+[calibration-p2.md](calibration-p2.md), [results-p3.md](results-p3.md) and
+[lls-regression.md](lls-regression.md): the LLS ↔ SLS regression passes). P2 matches the RP-180524 /
 TR 37.910 3GPP calibration data in all 9 configurations it covers. Decisions from §8 are confirmed: UMa 3.5 GHz / 100 MHz / 32T4R
 first, Type-I + eType-II CSI, `nrdlsim` as a pinned git dependency, K = 8
 explicit interferers.
@@ -301,7 +302,12 @@ dominant cost. The plan to keep it tractable:
    construction.
 3. Cross-check: fix one SLS UE and replace the interference with AWGN at the
    same SINR, using a CDL-like channel. The SLS SE must match the LLS
-   `run_point` at that SNR (regression test).
+   `run_point` at that SNR (regression test). **Status:** done, see
+   [lls-regression.md](lls-regression.md). On the same `nrdlsim` CDL channel
+   the SLS link (`nrsls.engine.single_link`, same CSI / link-adaptation /
+   L2S code as the system loop) matches the LLS within 2 % SE over CDL-A/C/D,
+   4T2R to 32T4R and −5 to 30 dB; `tests/test_lls_regression.py` holds it
+   to 4 %.
 
 ---
 

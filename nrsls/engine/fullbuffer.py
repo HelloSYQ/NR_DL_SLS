@@ -34,18 +34,17 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from nrdlsim import mcs_tables
 from nrdlsim import resource_grid as rg
 from nrdlsim import tbs as tbs_mod
 from nrdlsim.config import PDSCHConfig
-from nrdlsim.link_abstraction import bler_from_effective_sinr, effective_sinr_miesm
 
 from ..config.scenario import ScenarioConfig
 from ..mac.link_adaptation import LinkAdaptation
 from ..phy.csi import CSIProcessor
-from ..phy.sinr import mmse_sinr, whitening
+from ..phy.sinr import whitening
 from ..propagation.fast_fading import channel_batch, concat_clusters, subset_clusters
 from .drop import generate_drop
+from .link import decode_tb, new_tb, tb_precoder
 
 
 @dataclass
@@ -58,9 +57,10 @@ class FullBufferConfig:
     csi_period_slots: int = 10       # 5 ms CSI periodicity
     csi_delay_slots: int = 4
     rbg_size: int = 16                # also the CSI sub-band size
-    codebook: str = "type1"           # 'type1', 'etype2' or 'svd'
+    codebook: str = "type1"           # 'type1', 'etype2', 'svd' or 'svd_rb'
     etype2_combo: int = 6             # Table 5.2.2.2.5-1 parameter combination
     n_beams: int = 4                  # Type-I beams kept after stage 1
+    type1_subband_pmi: bool = True    # Type-I i2 per sub-band (else wideband)
     pmi_score_step: int = 4           # frequency subsampling of PMI scoring
     max_rank: int = 4
     mcs_table: int = 2
@@ -85,12 +85,6 @@ class FullBufferResult:
     geometry_db: np.ndarray
     bandwidth_hz: float
     n_cells: int
-
-
-def _w_at(w, subband):
-    """Precoder per frequency point: a wideband (S, r) matrix, or one
-    (S, r) matrix per sub-band (n_sb, S, r) indexed by ``subband``."""
-    return w if w.ndim == 2 else w[subband]
 
 
 def _links(d, k):
@@ -177,7 +171,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                         max_rank=min(fb.max_rank, n_u), mcs_table=fb.mcs_table,
                         target_bler=fb.target_bler, n_re_per_rb=n_re,
                         n_beams=fb.n_beams, score_step=fb.pmi_score_step,
-                        etype2_combo=fb.etype2_combo)
+                        etype2_combo=fb.etype2_combo,
+                        pmi_subband=fb.type1_subband_pmi)
     pending = [[] for _ in range(n_ue)]                   # (avail, report, sinr_sb)
     current = [None] * n_ue
     pf_avg = np.full(n_ue, 1.0)
@@ -221,20 +216,14 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                     if rbgs.size == 0:
                         continue
                     rep, sinr_sb = current[u]
-                    n_alloc = int(rb_per_rbg[rbgs].sum())
-                    mcs = la.select_mcs(u, sinr_sb[rbgs], rep.rank, n_alloc)
-                    info = mcs_tables.get_mcs(mcs, fb.mcs_table)
-                    tb_bits = tbs_mod.compute_tbs(n_re, n_alloc, info.modulation_order,
-                                                  info.target_code_rate, rep.rank)
-                    txs.append(dict(ue=u, cell=c, rbgs=rbgs, rank=rep.rank, w=rep.w,
-                                    info=info, bits=tb_bits, ntx=0, acc=None,
-                                    due=slot))
+                    txs.append(new_tb(la, u, c, rep, sinr_sb, rbgs, rb_per_rbg,
+                                      n_re, fb.mcs_table, slot))
             elif not any(t["cell"] == c for t in txs) and ue_of_cell[c].size:
                 g = rng.normal(size=(n_s,)) + 1j * rng.normal(size=(n_s,))
                 w_cell[c, :, :, 0] = g / np.linalg.norm(g)
         for tb in txs:
             fm = rbg_mask[tb["rbgs"]].any(axis=0)
-            w_cell[tb["cell"], fm, :, :tb["rank"]] = _w_at(tb["w"], rbg_f[fm])
+            w_cell[tb["cell"], fm, :, :tb["rank"]] = tb_precoder(tb, fm, rbg_f)
 
         # 2. interference covariance and whitening, per UT and frequency
         gi = h[:, 1:] @ w_cell[cells[:, 1:]]               # (U, K, F, Ua, 4)
@@ -248,14 +237,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         for tb in txs:
             u = tb["ue"]
             fm = rbg_mask[tb["rbgs"]].any(axis=0)
-            sinr = mmse_sinr(hw[u, fm] @ _w_at(tb["w"], rbg_f[fm]))  # (Fsel, r)
-            tb["acc"] = sinr if tb["acc"] is None else tb["acc"] + sinr
-            re_sinr = np.repeat(tb["acc"], nrb_f[fm], axis=0)
-            qm, rate = tb["info"].modulation_order, tb["info"].target_code_rate
-            eff = effective_sinr_miesm(re_sinr, qm)
-            ok = rng.random() > bler_from_effective_sinr(eff, qm, rate, tb["bits"])
             first = tb["ntx"] == 0
-            tb["ntx"] += 1
+            ok = decode_tb(tb, hw[u], fm, rbg_f, nrb_f, rng)
             if first:
                 la.update(u, ok)
                 pf_avg[u] += tb["bits"] / fb.pf_window_slots

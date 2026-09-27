@@ -55,8 +55,29 @@ def test_csi_picks_the_matching_codeword():
     proc = CSIProcessor(8, 2, max_rank=2, n_beams=4)
     rep = proc.select(hw, np.repeat(np.arange(2), 8), 2, slot=0)
     assert rep.rank == 1
-    assert tuple(idx[target]) == rep.pmi
+    # wideband i1 and the same co-phasing i2 in both sub-bands
+    i = [int(x) for x in idx[target]]
+    assert rep.pmi == (i[0], i[1], i[2], (i[3], i[3]))
+    wb = CSIProcessor(8, 2, max_rank=2, n_beams=4, pmi_subband=False)
+    assert wb.select(hw, np.repeat(np.arange(2), 8), 2, slot=0).pmi == tuple(i)
     assert rep.cqi_wb >= 13 and len(rep.cqi_sb) == 2
+
+
+def test_type1_subband_i2_follows_the_co_phasing():
+    """Each sub-band has its own polarisation co-phasing: sub-band i2 finds
+    it, a wideband i2 cannot."""
+    cb = TypeICodebook(8, 2, 4, 4)
+    idx, w = cb.precoders(1)
+    base = 4 * (8 * 5 + 3)                     # beam (l, m) = (5, 3), i2 = 0
+    f, n_sb = 32, 4
+    sb = np.repeat(np.arange(n_sb), f // n_sb)
+    hw = np.stack([30 * np.conj(w[base + b % 4, :, 0])[None, :] for b in sb])
+    hw = np.concatenate([hw, 1e-3 * hw], axis=1)             # (F, 2, 32)
+    rep = CSIProcessor(8, 2, max_rank=1).select(hw, sb, 1, slot=0)
+    assert rep.pmi[:3] == (5, 3, 0) and rep.pmi[3] == (0, 1, 2, 3)
+    assert rep.w.shape == (n_sb, 32, 1) and rep.pmi_bits == 8 + n_sb * 2         # i1: 5 + 3 bits
+    wb = CSIProcessor(8, 2, max_rank=1, pmi_subband=False).select(hw, sb, 1, 0)
+    assert wb.cqi_wb < rep.cqi_wb
 
 
 def test_csi_svd_rank_follows_channel_rank():
