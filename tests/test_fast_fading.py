@@ -150,3 +150,18 @@ def test_channel_matrix_power_matches_rsrp_and_is_static_without_motion():
     H = link_channel(cl, 0, bs, 0.0, ue, [0.0], [0.0, 0.1, 0.3],
                      velocity_mps=(0.0, 0.0, 0.0), wavelength_m=lam)
     assert np.allclose(H[0], H[1]) and np.allclose(H[0], H[2])
+
+
+def test_inh_a_uses_laplacian_azimuths_and_constant_spreads():
+    rng = np.random.default_rng(7)
+    n = 20_000
+    ls = _lsps("inh_a", NLOS, n, rng, fc=4.0, d2d=20.0, h_ut=1.5, h_bs=3.0)
+    assert np.log10(ls.ds_s[0]).mean() == pytest.approx(-7.41, abs=0.01)
+    assert np.log10(ls.asa_deg[0]).mean() == pytest.approx(1.77, abs=0.01)
+    assert np.log10(ls.zsd_deg[0]).mean() == pytest.approx(1.08, abs=0.01)
+    # Laplacian: cluster azimuth offsets scale linearly with -ln(P/Pmax)
+    m = 200
+    fl = _flat(_lsps("inh_a", NLOS, m, rng, fc=4.0, h_bs=3.0))
+    cl = generate_clusters("inh_a", 4.0, np.full(m, NLOS), fl,
+                           np.zeros(m), np.full(m, 100.0), rng)
+    assert np.allclose(cl.power.sum(axis=1), 1.0)

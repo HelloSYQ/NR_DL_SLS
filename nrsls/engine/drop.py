@@ -99,7 +99,7 @@ def generate_drop(cfg: ScenarioConfig, rng) -> LargeScaleDrop:
 
     # --- LOS state (outdoor part), pathloss ---
     los = rng.random(d2d.shape) < los_probability(cfg.scenario, d2d_out, h_ut)
-    fam = cfg.family
+    fam = cfg.propagation_family
     h_e = pathloss.sample_uma_h_e(d2d, h_ut, rng) if fam == "uma" else 1.0
     pl = pathloss.basic_pathloss_db(
         fam, los, d2d, d3d, h_bs, h_ut, cfg.carrier_freq_hz, h_e=h_e,

@@ -5,8 +5,10 @@ geometry ([calibration-p1.md](calibration-p1.md)). The calibration
 reference is the per-company data of RP-180524 (the source of TR 37.910
 Annex A): 12–20 companies per configuration.
 
-**Result.** With the multipath coupling model used by the calibration, **all 7
-RP-180524 configurations that nrsls can set up match the company data**.
+**Result.** With the multipath coupling model used by the calibration, **all 9
+RP-180524 configurations that nrsls can set up match the company data**
+(Rural ×3, UMa-mMTC ×2, UMa-URLLC ×2, Indoor Hotspot config A with 12 and
+36 TRxP).
 Nearly all percentiles lie inside the companies' min–max envelope, and the
 gaps to the company mean are mostly within ±0.7 dB (never more than 1.5 dB).
 Rural LMLC needed the LMLC NLOS pathloss of ITU-R M.2412 (see below).
@@ -50,6 +52,8 @@ min–max envelope.
 | UMa-URLLC 4 GHz | −0.2 +0.6 +0.4 +0.1 +0.3 +0.6 +0.6 | 100 % | −0.3 −0.3 −0.3 −0.6 −0.7 −0.8 −0.6 | 100 % |
 | UMa-URLLC 700 MHz | −0.1 +0.1 +0.4 +0.2 +0.3 +0.7 +0.2 | 100 % | −0.4 −0.3 −0.3 −0.6 −0.7 −0.8 −0.6 | 100 % |
 | Rural LMLC (ISD 6 km) | −1.3 −0.5 +0.1 +0.6 +0.7 +0.7 +0.1 | 100 % | −0.5 −0.5 −0.3 −0.2 −0.1 −0.0 +0.2 | 100 % |
+| InH 4 GHz, 12 TRxP | +0.6 +0.6 +0.3 +0.2 +0.2 +0.2 −0.1 | 100 % | +0.2 +0.2 +0.2 +0.2 +0.1 −0.1 +0.0 | 100 % |
+| InH 4 GHz, 36 TRxP | +0.2 +0.3 +0.1 +0.1 +0.2 +0.1 +0.2 | 100 % | +0.1 +0.1 +0.0 −0.1 −0.3 −0.5 −0.6 | 100 % |
 
 ![Phase 2 vs RP-180524](../results/p2_rp180524.png)
 
@@ -90,11 +94,21 @@ effects of eq. (8.1-1) closed that gap:
    12 dB), valid for 10 m < d2D < 21 km. It is implemented as
    `ScenarioConfig.rma_nlos_offset_db = 12` in the `rp-rural-lmlc` preset.
    It moved LMLC from −10.6 dB to +0.6 dB at the median.
-2. **Dense Urban config A and Indoor Hotspot** (RP-180524 Tables 1–2) need
-   analog-beam sets (2-D DFT sub-array weights, best-beam-pair attachment,
-   random interferer beams). Indoor Hotspot also needs ceiling TRPs and the
-   M.2412 Table 8-7 element (5 dBi). The reference data is already in
-   `refs/rp180524/`.
-3. **Runtime.** A multipath drop takes ~3 s (57 cells × 570 UTs, all
+2. **Indoor Hotspot config A: closed.** RP-180524 Table 1 with ITU-R M.2412
+   channel model A. Below 6 GHz InH_A departs from TR 38.901 in three ways:
+   - the M.2135-style pathloss: 16.9 lg d + 32.8 + 20 lg fc (LOS),
+     43.3 lg d + 11.5 + 20 lg fc (NLOS), SF 3 / 4 dB;
+   - constant DS / ASA / ZSA / ZSD statistics (Tables A1-16/17);
+   - Laplacian azimuth spectra (eq. 13b/14b).
+
+   The element is the ceiling-mount pattern of M.2412 Table 10 (90°, 25 dB,
+   5 dBi). The 12-TRxP TRPs point at the floor; the 36-TRxP ones are
+   3-sector with a 20° downtilt. See `rp180524_inh()` and
+   `ScenarioConfig.itu_model_a`.
+3. **Not covered (by choice):** Dense Urban config A and the 30/70 GHz
+   Indoor Hotspot configs use analog-beam sets (hybrid beamforming). The
+   target 32T4R system is fully digital, so these are left for a later
+   hybrid/FR2 extension. Their reference data is in `refs/rp180524/`.
+4. **Runtime.** A multipath drop takes ~3 s (57 cells × 570 UTs, all
    links). Phase 3 only needs full channel matrices for the serving cell +
    K strongest interferers.

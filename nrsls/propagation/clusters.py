@@ -126,8 +126,13 @@ def generate_clusters(family, fc_ghz, condition, lsps, los_aod, los_zod,
     # --- step 7: angles ---
     rel = np.where(valid, p_ang / p_ang.max(axis=1, keepdims=True), 1.0)
     rel = np.clip(rel, 1e-12, 1.0)
-    c_phi = col("c_phi") * np.where(
-        los, 1.1035 - 0.028 * k_db - 0.002 * k_db ** 2 + 0.0001 * k_db ** 3, 1.0)
+    laplace = bool(PARAMS[family][NLOS].get("az_laplacian", False))
+    if laplace:     # ITU-R M.2412 eq. (14b)
+        c_phi = col("c_phi") * np.where(
+            los, 0.9275 + 0.0439 * k_db - 0.0071 * k_db ** 2 + 0.0002 * k_db ** 3, 1.0)
+    else:           # TR 38.901 eq. (7.5-10)
+        c_phi = col("c_phi") * np.where(
+            los, 1.1035 - 0.028 * k_db - 0.002 * k_db ** 2 + 0.0001 * k_db ** 3, 1.0)
     c_th = col("c_theta") * np.where(
         los, 1.3086 + 0.0339 * k_db - 0.0077 * k_db ** 2 + 0.0002 * k_db ** 3, 1.0)
     los_aoa = np.mod(los_aod + 180.0, 360.0)
@@ -135,7 +140,10 @@ def generate_clusters(family, fc_ghz, condition, lsps, los_aod, los_zod,
     zoa_mean = np.where(cond == O2I, 90.0, los_zoa)
 
     def azimuths(spread, los_dir):
-        base = 2 * (spread[:, None] / 1.4) * np.sqrt(-np.log(rel)) / c_phi[:, None]
+        if laplace:     # inverse Laplacian, M.2412 eq. (13b)
+            base = -spread[:, None] * np.log(rel) / c_phi[:, None]
+        else:           # inverse wrapped Gaussian, TR 38.901 eq. (7.5-9)
+            base = 2 * (spread[:, None] / 1.4) * np.sqrt(-np.log(rel)) / c_phi[:, None]
         sgn = rng.choice([-1.0, 1.0], size=(n_links, n_max))
         y = (spread[:, None] / 7) * rng.standard_normal((n_links, n_max))
         a = sgn * base + y

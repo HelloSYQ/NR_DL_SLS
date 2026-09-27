@@ -10,7 +10,7 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   [`docs/calibration-p1.md`](docs/calibration-p1.md).
 - **Phase 2 (TR 38.901 fast fading):** LSPs, clusters and rays, multipath
   port-0 RSRP and channel matrices H(f, t). The simulator matches the 3GPP
-  IMT-2020 calibration data (RP-180524 / TR 37.910 Annex A) in all 7
+  IMT-2020 calibration data (RP-180524 / TR 37.910 Annex A) in all 9
   configurations it covers; see [`docs/calibration-p2.md`](docs/calibration-p2.md).
 - **Next:** phase 3, full-buffer SU-MIMO with Type-I / eType-II CSI.
 
@@ -45,7 +45,7 @@ python -m pytest
 | `system` | UMa, 3.5 GHz, 100 MHz (273 PRB, 30 kHz), 53 dBm, 32T4R |
 | `uma`, `umi`, `rma`, `inh-open`, `inh-mixed` | TR 38.901 §7.2 deployments |
 | `calib-uma`, `calib-umi`, `calib-inh` | TR 38.901 Table 7.8-1-style large-scale calibration at 6 GHz |
-| `rp-rural-700m`, `rp-rural-4g`, `rp-rural-lmlc`, `rp-mmtc-500m`, `rp-mmtc-1732m`, `rp-urllc-4g`, `rp-urllc-700m` | RP-180524 IMT-2020 calibration set-ups (reference data in `refs/rp180524/`) |
+| `rp-rural-700m`, `rp-rural-4g`, `rp-rural-lmlc`, `rp-mmtc-500m`, `rp-mmtc-1732m`, `rp-urllc-4g`, `rp-urllc-700m`, `rp-inh-12trxp`, `rp-inh-36trxp` | RP-180524 IMT-2020 calibration set-ups (reference data in `refs/rp180524/`) |
 
 Every field of `nrsls.ScenarioConfig` can be overridden:
 `get_preset("system", ue_per_cell=20, o2i_model="legacy")`.

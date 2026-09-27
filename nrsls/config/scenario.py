@@ -137,6 +137,9 @@ class ScenarioConfig:
     street_width_m: float = 20.0
     # ITU-R M.2412 LMLC: RMa NLOS pathloss reduced by 12 dB (bounded by LOS)
     rma_nlos_offset_db: float = 0.0
+    # ITU-R M.2412 channel model A where it departs from TR 38.901 (InH at
+    # 0.5-6 GHz: pathloss, SF, LSP means and Laplacian azimuths)
+    itu_model_a: bool = False
 
     # --- large-scale parameters / coupling ---
     shadow_fading: bool = True
@@ -165,6 +168,14 @@ class ScenarioConfig:
     def family(self) -> str:
         """'uma' | 'umi' | 'rma' | 'inh'."""
         return self.scenario.split("-")[0].lower()
+
+    @property
+    def propagation_family(self) -> str:
+        """Key of the pathloss / LSP tables (``inh_a`` = M.2412 InH_A)."""
+        if (self.itu_model_a and self.family == "inh"
+                and self.carrier_freq_hz <= 6e9):
+            return "inh_a"
+        return self.family
 
     @property
     def is_indoor_scenario(self) -> bool:
@@ -350,6 +361,35 @@ def rp180524(env: str, channel_model_a_o2i: str = "legacy",
                   in_car_ratio=car, o2i_model=channel_model_a_o2i,
                   o2i_high_loss_ratio=0.2, **common)
     return replace(cfg, name=f"RP-180524 {env}", **overrides)
+
+
+def rp180524_inh(trxp_per_site: int = 1, **overrides) -> ScenarioConfig:
+    """RP-180524 Table 1, Indoor Hotspot config A (4 GHz), 12 or 36 TRxP.
+
+    12 TRxP: one TRxP per site pointing at the floor (mechanical tilt 180 deg
+    in GCS, electrical tilt 90 deg in LCS).  36 TRxP: three TRxPs per site at
+    30 / 150 / 270 deg, mechanically tilted to 110 deg (20 deg down).
+    32 elements (4, 4, 2) mapped 1-to-1 to TXRUs, so port 0 is one element
+    of the ceiling-mount pattern (M.2412 Table 10: 90 deg beamwidth, 25 dB
+    limits, 5 dBi).  21 dBm in 10 MHz, UE NF 7 dB, UEs (1, 2, 2) at 1.5 m,
+    no wrap-around, d2D_min = 0.  Channel model A = M.2412 InH_A.
+    """
+    tilt = 90.0 if trxp_per_site == 1 else 20.0
+    bearings = (0.0,) if trxp_per_site == 1 else (30.0, 150.0, 270.0)
+    ant = BSAntennaConfig(M=4, N=4, P=2, Mp=4, Np=4, dV=0.5, dH=0.5,
+                          max_gain_dbi=5.0, hpbw_deg=90.0, front_back_db=25.0,
+                          electrical_tilt_deg=90.0, mechanical_downtilt_deg=tilt)
+    cfg = inh("open", carrier_freq_hz=4e9,
+              carrier=CarrierConfig(mu=0, n_size_grid=52), noise_bandwidth_hz=10e6,
+              bs_tx_power_dbm=21.0, ue_noise_figure_db=7.0, h_ut_outdoor_m=1.5,
+              sector_bearings_deg=bearings, bs_antenna=ant,
+              ue_antenna=UEAntenna(M=1, N=2, P=2), itu_model_a=True,
+              name=f"RP-180524 InH {12 * trxp_per_site} TRxP")
+    return replace(cfg, **overrides)
+
+
+PRESETS["rp-inh-12trxp"] = lambda **kw: rp180524_inh(1, **kw)
+PRESETS["rp-inh-36trxp"] = lambda **kw: rp180524_inh(3, **kw)
 
 
 for _env in ("rural-700m", "rural-4g", "rural-lmlc", "mmtc-500m",

@@ -31,6 +31,7 @@ _SF_STD_DB = {
     "umi": (4.0, 7.82, 7.0),
     "rma": (None, 8.0, 8.0),   # LOS: 4 / 6 dB below / above the breakpoint
     "inh": (3.0, 8.03, None),
+    "inh_a": (3.0, 4.0, None),        # ITU-R M.2412 InH_A, 0.5-6 GHz
 }
 
 
@@ -135,6 +136,16 @@ def inh_nlos(d3d, fc_hz):
     return np.maximum(inh_los(d3d, fc_hz), pl_n)
 
 
+def inh_a_los(d3d, fc_hz):
+    """ITU-R M.2412 InH_A LOS, 0.5-6 GHz (Table A1-2)."""
+    return 16.9 * _log10(d3d) + 32.8 + 20.0 * np.log10(fc_hz / 1e9)
+
+
+def inh_a_nlos(d3d, fc_hz):
+    """ITU-R M.2412 InH_A NLOS, 0.5-6 GHz (Table A1-2)."""
+    return 43.3 * _log10(d3d) + 11.5 + 20.0 * np.log10(fc_hz / 1e9)
+
+
 # --- dispatch ----------------------------------------------------------------
 
 def basic_pathloss_db(family: str, los, d2d, d3d, h_bs, h_ut, fc_hz, *,
@@ -155,6 +166,9 @@ def basic_pathloss_db(family: str, los, d2d, d3d, h_bs, h_ut, fc_hz, *,
     elif family == "inh":
         pl_l = inh_los(d3d, fc_hz)
         pl_n = inh_nlos(d3d, fc_hz)
+    elif family == "inh_a":
+        pl_l = inh_a_los(d3d, fc_hz)
+        pl_n = inh_a_nlos(d3d, fc_hz)
     else:
         raise ValueError(f"unknown scenario family {family!r}")
     return np.where(los, pl_l, pl_n)
@@ -174,7 +188,7 @@ def shadow_fading_std_db(family: str, condition, d2d=None, h_bs=None,
     if family == "rma":
         d_bp = rma_breakpoint(h_bs, h_ut, fc_hz)
         s_los = np.where(np.asarray(d2d) <= d_bp, 4.0, 6.0)
-    if family == "inh" and np.any(cond == O2I):
+    if family in ("inh", "inh_a") and np.any(cond == O2I):
         raise ValueError("InH has no O2I links")
     return np.select([cond == LOS, cond == NLOS],
                      [s_los, s_nlos], default=np.nan if s_o2i is None else s_o2i)

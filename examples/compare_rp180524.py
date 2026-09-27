@@ -40,6 +40,8 @@ SHEETS = {
     "rp-mmtc-1732m": "UMa_mMTC_1732m_ModelA",
     "rp-urllc-4g": "UMa_URLLC_4GHz_ModelA",
     "rp-urllc-700m": "UMa_URLLC_700MHz_ModelA",
+    "rp-inh-12trxp": "InH_4GHz_12TRxP_ModelA",
+    "rp-inh-36trxp": "InH_4GHz_36TRxP_ModelA",
 }
 
 
@@ -61,8 +63,10 @@ def figure(results, path, label):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from nrsls.plots import cdf
-    show = ["rp-rural-700m", "rp-urllc-4g"]
-    fig, axs = plt.subplots(2, 2, figsize=(11, 8), facecolor=cdf.SURFACE)
+    show = [n for n in ("rp-rural-700m", "rp-urllc-4g", "rp-inh-12trxp")
+            if n in results]
+    fig, axs = plt.subplots(len(show), 2, figsize=(11, 4 * len(show)),
+                            facecolor=cdf.SURFACE, squeeze=False)
     for row, name in enumerate(show):
         st = results[name]
         for col, metric in enumerate(("coupling_gain", "geometry")):
@@ -98,9 +102,12 @@ def main():
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--coupling", default="multipath", choices=("multipath", "los"))
+    ap.add_argument("--only", nargs="*", default=None, help="subset of presets")
     args = ap.parse_args()
     summary, samples = {}, {}
     for name, sheet in SHEETS.items():
+        if args.only and name not in args.only:
+            continue
         st = run_large_scale(get_preset(name, coupling_model=args.coupling),
                              args.drops, args.seed, args.jobs)
         samples[name] = {"coupling_gain": st.coupling_gain_db,

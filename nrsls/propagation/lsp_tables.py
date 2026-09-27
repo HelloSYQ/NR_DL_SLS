@@ -156,3 +156,21 @@ PARAMS = {
             xcorr={("SF", "DS"): -0.5, ("SF", "ASA"): -0.4, ("DS", "ASD"): 0.4, ("DS", "ZSD"): -0.27, ("DS", "ZSA"): -0.06, ("ASD", "ZSD"): 0.35, ("ASD", "ZSA"): 0.23, ("ASA", "ZSD"): -0.08, ("ASA", "ZSA"): 0.43, ("ZSD", "ZSA"): 0.42}),
     },
 }
+
+
+# ITU-R M.2412 channel model A, InH below 6 GHz (Table A1-16, first column
+# pair): the TR 38.901 InH table with constant DS / ASA / ZSA statistics,
+# SF of 3 / 4 dB and Laplacian azimuth spectra (eq. 13b / 14b, C_phi^NLOS =
+# 1.434 for 15 clusters, 1.501 for 19).  ZSD in Table A1-17 (lsp.py).
+import copy as _copy  # noqa: E402
+
+PARAMS["inh_a"] = _copy.deepcopy(PARAMS["inh"])
+PARAMS["inh_a"][0].update(ds=(0.0, 0.0, -7.70, 0.0, 0.0, 0.18),
+                          asa=(0.0, 0.0, 1.62, 0.0, 0.0, 0.22),
+                          zsa=(0.0, 0.0, 1.22, 0.0, 0.0, 0.23),
+                          sf=3.0, zsd_sigma=0.41, c_phi=1.434, az_laplacian=True)
+PARAMS["inh_a"][1].update(ds=(0.0, 0.0, -7.41, 0.0, 0.0, 0.14),
+                          asa=(0.0, 0.0, 1.77, 0.0, 0.0, 0.16),
+                          zsa=(0.0, 0.0, 1.26, 0.0, 0.0, 0.67),
+                          sf=4.0, zsd_sigma=0.36, c_phi=1.501, az_laplacian=True)
+

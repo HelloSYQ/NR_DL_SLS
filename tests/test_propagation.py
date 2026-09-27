@@ -170,3 +170,16 @@ def test_rma_lmlc_nlos_offset():
     lmlc = float(pathloss.rma_nlos(d2, dd, hb, hu, fc, nlos_offset_db=12.0))
     assert lmlc == pytest.approx(max(los, std - 12.0))
     assert std - lmlc == pytest.approx(12.0)      # NLOS term dominates here
+
+
+def test_m2412_inh_a_pathloss():
+    """ITU-R M.2412 InH_A (0.5-6 GHz): 16.9 lg d + 32.8 + 20 lg fc (LOS),
+    43.3 lg d + 11.5 + 20 lg fc (NLOS), SF 3 / 4 dB."""
+    d = 20.0
+    fc = 4e9
+    assert float(pathloss.inh_a_los(d, fc)) == pytest.approx(
+        16.9 * np.log10(20) + 32.8 + 20 * np.log10(4), abs=1e-9)
+    assert float(pathloss.inh_a_nlos(d, fc)) == pytest.approx(
+        43.3 * np.log10(20) + 11.5 + 20 * np.log10(4), abs=1e-9)
+    s = pathloss.shadow_fading_std_db("inh_a", np.array([LOS, NLOS]))
+    assert np.allclose(s, [3.0, 4.0])

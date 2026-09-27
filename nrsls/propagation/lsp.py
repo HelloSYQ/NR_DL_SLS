@@ -29,6 +29,7 @@ SF_CORR_DIST_M = {
     "umi": (10.0, 13.0, 7.0),
     "rma": (37.0, 120.0, 120.0),
     "inh": (10.0, 6.0, None),
+    "inh_a": (10.0, 6.0, None),
 }
 
 
@@ -89,7 +90,7 @@ from dataclasses import dataclass  # noqa: E402
 
 from .lsp_tables import LSP_ORDER, PARAMS  # noqa: E402
 
-_FC_MIN_GHZ = {"uma": 6.0, "umi": 2.0, "inh": 6.0, "rma": 0.0}
+_FC_MIN_GHZ = {"uma": 6.0, "umi": 2.0, "inh": 6.0, "inh_a": 6.0, "rma": 0.0}
 
 
 @dataclass
@@ -139,6 +140,10 @@ def zsd_and_offset(family, outdoor_los, d2d, h_bs, h_ut, fc_ghz):
                       np.maximum(-1.0, -0.19 * d / 1000 - 0.01 * (h_ut - 1.5) + 0.28))
         sig = np.where(los, 0.34, 0.30)
         off = np.rad2deg(np.arctan((35 - 3.5) / d) - np.arctan((35 - 1.5) / d))
+    elif family == "inh_a":                   # M.2412 Table A1-17, <= 6 GHz
+        mu = np.where(los, 1.02, 1.08)
+        sig = np.where(los, 0.41, 0.36)
+        off = np.zeros(d.shape)
     elif family == "inh":
         lf = np.log10(1 + fc)
         mu = np.where(los, -1.43 * lf + 2.228, 1.08)
