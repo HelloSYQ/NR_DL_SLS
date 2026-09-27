@@ -14,7 +14,7 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   configurations it covers; see [`docs/calibration-p2.md`](docs/calibration-p2.md).
 - **Phase 3 (full-buffer SU-MIMO):** MMSE-IRC, Type-I and Rel-16 eType-II
   CSI (plus SVD reference), PF scheduler, OLLA, HARQ, MIESM L2S. UMa 3.5 GHz
-  32T4R: cell SE 5.84 / 6.13 / 6.27 bit/s/Hz (Type-I / eType-II / SVD); see
+  32T4R: cell SE 5.83 / 6.13 / 6.27 bit/s/Hz (Type-I / eType-II / SVD); see
   [`docs/results-p3.md`](docs/results-p3.md).
 - **LLS ↔ SLS regression:** one SLS link on the `nrdlsim` CDL channel
   reproduces the LLS `run_point` within 2 % SE (CDL-A/C/D, 4T2R to 32T4R,
