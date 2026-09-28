@@ -43,8 +43,8 @@ def main():
     ap.add_argument("--tag", default="p3")
     ap.add_argument("--mu", action="store_true", help="MU-MIMO scheduling")
     ap.add_argument("--max-rank", type=int, default=4, help="CSI rank restriction")
-    ap.add_argument("--mu-max-ues", type=int, default=4)
-    ap.add_argument("--mu-max-layers", type=int, default=8)
+    ap.add_argument("--mu-max-ues", type=int, default=2)
+    ap.add_argument("--mu-max-layers", type=int, default=4)
     args = ap.parse_args()
 
     cfg = get_preset(args.preset, ue_per_cell=args.ue_per_cell)
@@ -66,6 +66,8 @@ def main():
               f"PMI bits {r['mean_pmi_bits']:.0f}  "
               f"UTs/RBG {r['mean_ues_per_rbg']:.2f}  layers/RBG "
               f"{r['mean_layers_per_rbg']:.2f}  MU TBs {r['mu_tb_fraction']:.2f}  "
+              f"retx RBGs {r['retx_rbg_fraction']:.3f}  MU SINR err "
+              f"{r['mu_sinr_error_db']:+.2f} dB  "
               f"({summary[cb]['runtime_s']} s)", flush=True)
 
     os.makedirs(OUT, exist_ok=True)

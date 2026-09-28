@@ -46,6 +46,9 @@ def test_pairing_takes_orthogonal_and_rejects_aligned_uts():
     assert len(g) == 2
     g, *_ = greedy_pairing(0, [1, 2, 3], v, s, rank, pf, 4, 4)
     assert len(g) == 2
+    # the double-symbol DM-RS cost above 4 layers can stop the growth at 4
+    g, *_ = greedy_pairing(0, [1, 2, 3], v, s, rank, pf, 4, 8, dd_factor=0.5)
+    assert len(g) == 2
     # a heavy MU back-off on the candidates stops the pairing
     s_mu = {u: 100.0 * 10 ** (-3.0) for u in v}
     g, *_ = greedy_pairing(0, [1, 2], v, s, rank, pf, 4, 8, s_mu)
@@ -73,9 +76,11 @@ def test_mu_path_without_pairing_reproduces_su(small):
 
 def test_mu_mimo_co_schedules_and_is_reproducible(small):
     cfg, fb = small
-    a = run_full_buffer_drop(cfg, FullBufferConfig(**fb, mu_mimo=True),
+    a = run_full_buffer_drop(cfg, FullBufferConfig(**fb, mu_mimo=True, mu_max_ues=4,
+                                                   mu_max_layers=8),
                              np.random.default_rng(5))
-    b = run_full_buffer_drop(cfg, FullBufferConfig(**fb, mu_mimo=True),
+    b = run_full_buffer_drop(cfg, FullBufferConfig(**fb, mu_mimo=True, mu_max_ues=4,
+                                                   mu_max_layers=8),
                              np.random.default_rng(5))
     assert np.allclose(a.ue_se, b.ue_se)
     assert a.mean_ues_per_rbg > 1.2 and a.mu_tb_fraction > 0.2

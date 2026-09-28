@@ -74,8 +74,8 @@ class FullBufferConfig:
     link_batch: int = 128
     # MU-MIMO (mac/mu_mimo.py): greedy pairing per RBG, ZF on the reports
     mu_mimo: bool = False
-    mu_max_ues: int = 4               # co-scheduled UTs per RBG
-    mu_max_layers: int = 8            # total layers per RBG
+    mu_max_ues: int = 2               # co-scheduled UTs per RBG
+    mu_max_layers: int = 4            # total layers per RBG (<= 4: 1-symbol DM-RS)
     mu_max_rank: int = 2              # layers per co-scheduled UT
     mu_dmrs_overhead: bool = True     # > 4 layers on an RBG: double-symbol DM-RS
 
@@ -96,6 +96,8 @@ class FullBufferResult:
     mean_ues_per_rbg: float = 1.0     # co-scheduled UTs per used RBG
     mean_layers_per_rbg: float = 0.0  # layers per used RBG
     mu_tb_fraction: float = 0.0       # first transmissions with co-scheduling
+    retx_rbg_fraction: float = 0.0    # RBG-slots carrying retransmissions
+    mu_sinr_error_db: float = 0.0     # gNB MU SINR estimate - actual (mean)
 
 
 def _links(d, k):
@@ -118,37 +120,79 @@ def _report_vectors(rep, n_rbg, first_f):
     return unit_columns(np.asarray(w, np.complex128))
 
 
-def _mu_schedule_cell(c, cand, free, current, pf_avg, la, la_mu, fb, rbg_mask,
-                      rbg_f, rb_per_rbg, n_re, n_re_dd, n_f, n_s, slot, stats):
+def _mu_schedule_cell(c, cand, free, forced, current, pf_avg, la, la_mu, fb,
+                      rbg_mask, rbg_f, rb_per_rbg, n_re, n_re_dd, n_f, n_s, slot,
+                      stats):
     """MU-MIMO TBs of cell ``c`` on its free RBGs (see mac/mu_mimo.py).
 
+    ``forced[b]`` lists the HARQ retransmissions due on RBG b.  They open the
+    RBG's co-scheduled set (otherwise the PF owner does), other UTs are paired
+    around them, and their precoder on b is recomputed for the new set; the
+    TB, rank and MCS stay those of the first transmission.
+
     Every TB carries a per-frequency-point precoder (F, S, r) and, per RBG,
-    the column offset ``col`` of its layers among the cell's layers.  A TB
-    sharing an RBG with more than 4 layers in total needs DM-RS ports 4-7,
+    the column offset ``col`` of its layers among the cell's layers.  A new
+    TB sharing an RBG with more than 4 layers in total needs DM-RS ports 4-7,
     i.e. double-symbol DM-RS, and gets ``n_re_dd`` data REs per RB."""
     n_rbg = len(free)
-    met = np.array([current[u][0].rank * np.log2(1 + 10 ** (current[u][1] / 10))
-                    / pf_avg[u] for u in cand])                 # (n_cand, n_rbg)
-    best = np.argmax(met, axis=0)
     pool = [u for u in cand if current[u][0].rank <= fb.mu_max_rank]
     rank = {u: current[u][0].rank for u in cand}
     pf = {u: pf_avg[u] for u in cand}
+    retx = {}
+    for b in range(n_rbg):
+        for tb in forced[b]:
+            u = tb["ue"]
+            retx[u], rank[u], pf[u] = tb, tb["rank"], pf_avg[u]
+    if cand:
+        met = np.array([rank[u] * np.log2(1 + 10 ** (current[u][1] / 10)) / pf_avg[u]
+                        for u in cand])                         # (n_cand, n_rbg)
+        best = np.argmax(met, axis=0)
+
+    def vectors(u, b):
+        if u in retx:
+            r, rep = rank[u], current[u][0]
+            if rep.rank >= r:
+                return current[u][2][b][:, :r]
+            return unit_columns(retx[u]["w"][np.argmax(rbg_mask[b])])
+        return current[u][2][b]
+
     per_ue = {}
     for b in np.nonzero(free)[0]:
-        o = cand[best[b]]
-        if rank[o] > fb.mu_max_rank or fb.mu_max_ues < 2:
-            group, w, est, uid = [o], None, None, None
+        start = [tb["ue"] for tb in forced[b]]
+        if not start:
+            if not cand:
+                continue
+            start = [cand[best[b]]]
+        if fb.mu_max_ues < 2 or any(rank[u] > fb.mu_max_rank for u in start):
+            group, w, est, uid = start, None, None, None
         else:
-            v = {u: current[u][2][b] for u in set(pool) | {o}}
+            v = {u: vectors(u, b) for u in set(pool) | set(start)}
             s_lin = {u: 10 ** (current[u][1][b] / 10) for u in v}
             s_mu = {u: s_lin[u] * 10 ** (-(la_mu.offset[u] - la.offset[u]) / 10)
                     for u in v}
-            group, w, est, uid = greedy_pairing(o, pool, v, s_lin, rank, pf,
-                                                fb.mu_max_ues, fb.mu_max_layers, s_mu)
+            group, w, est, uid = greedy_pairing(
+                start, pool, v, s_lin, rank, pf, fb.mu_max_ues, fb.mu_max_layers, s_mu,
+                dd_factor=n_re_dd / n_re if fb.mu_dmrs_overhead else 1.0)
+            if len(group) == 1:
+                w = v[group[0]]
         stats["ues"].append(len(group))
         stats["layers"].append(sum(rank[u] for u in group))
         for u in group:
             per_ue.setdefault(u, []).append((b, group, w, est, uid))
+
+    # retransmissions: new precoder and layer columns on their RBGs
+    for u, tb in retx.items():
+        for b, group, w, est, uid in per_ue.get(u, []):
+            fm = rbg_mask[b]
+            if len(group) == 1:
+                ww = w if w is not None else vectors(u, b)
+                tb["w"][fm] = ww / np.sqrt(ww.shape[1])
+                tb["col"][b] = 0
+            else:
+                mine = np.nonzero(uid == u)[0]
+                tb["w"][fm] = w[:, mine] / np.sqrt(len(uid))
+                tb["col"][b] = mine[0]
+
     txs = []
     for u in cand:                        # same TB (and random draw) order as SU
         if u not in per_ue:
@@ -175,10 +219,12 @@ def _mu_schedule_cell(c, cand, free, current, pf_avg, la, la_mu, fb, rbg_mask,
                 se = np.mean(np.log2(1 + raw))
                 sinr_db.append(10 * np.log10(max(2 ** se - 1, 1e-6)))
         rbgs = np.array([a[0] for a in alloc])
+        est_db = 10 * np.log10(max(2 ** np.mean(np.log2(1 + 10 ** (np.array(sinr_db) / 10)))
+                                   - 1, 1e-6))
         txs.append(make_tb(la_mu if mu else la, u, c, r, w_f, True,
                            np.array(sinr_db), rbgs, rb_per_rbg,
                            n_re_dd if dd and fb.mu_dmrs_overhead else n_re,
-                           fb.mcs_table, slot, col=col, mu=mu))
+                           fb.mcs_table, slot, col=col, mu=mu, est_db=est_db))
     return txs
 
 
@@ -259,6 +305,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     first_f = np.argmax(rbg_mask, axis=1)                   # first point of each RBG
     mu_stats = {"ues": [], "layers": []}
     n_mu_first = 0
+    diag = {"retx_rbg": 0, "rbg": 0, "err": []}
     proc = CSIProcessor(bs.Np, bs.Mp, 4, 4 if bs.Mp > 1 else 1,
                         codebook=fb.codebook,
                         max_rank=min(fb.max_rank, n_u), mcs_table=fb.mcs_table,
@@ -291,10 +338,28 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         for c in range(lay.n_cells):
             free = np.ones(n_rbg, bool)
             busy = set()
+            forced = [[] for _ in range(n_rbg)]      # MU: co-scheduled retx
             for tb in [t for t in due if t["cell"] == c]:
-                if free[tb["rbgs"]].all():
+                rb = tb["rbgs"]
+                # MU: a retransmission joins its RBGs' co-scheduled sets (one
+                # per UT and slot); otherwise it takes its RBGs alone
+                if (fb.mu_mimo and fb.mu_max_ues > 1 and tb["ue"] not in busy
+                        and tb["rank"] <= fb.mu_max_rank and free[rb].all() and all(
+                        len(forced[b]) < fb.mu_max_ues
+                        and sum(t["rank"] for t in forced[b]) + tb["rank"]
+                        <= fb.mu_max_layers for b in rb)):
+                    for b in rb:
+                        forced[b].append(tb)
+                    busy.add(tb["ue"])
+                    tb["col"] = np.zeros(n_rbg, int)
+                    if slot >= fb.warmup_slots:
+                        diag["retx_rbg"] += len(rb)
+                    txs.append(tb)
+                elif free[rb].all() and not any(forced[b] for b in rb):
                     free[tb["rbgs"]] = False
                     busy.add(tb["ue"])
+                    if slot >= fb.warmup_slots:
+                        diag["retx_rbg"] += len(tb["rbgs"])
                     if fb.mu_mimo:            # retransmitted alone, full power
                         tb["col"] = np.zeros(n_rbg, int)
                         nrm = np.linalg.norm(tb["w"], axis=(1, 2), keepdims=True)
@@ -303,12 +368,14 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                 else:
                     tb["due"] = slot + 1
                     harq.append(tb)
+            if slot >= fb.warmup_slots and ue_of_cell[c].size:
+                diag["rbg"] += n_rbg
             cand = [u for u in ue_of_cell[c] if current[u] is not None and u not in busy]
-            if cand and free.any() and fb.mu_mimo:
+            if fb.mu_mimo and free.any() and (cand or any(forced)):
                 stats = mu_stats if slot >= fb.warmup_slots else {"ues": [], "layers": []}
-                txs += _mu_schedule_cell(c, cand, free, current, pf_avg, la, la_mu, fb,
-                                         rbg_mask, rbg_f, rb_per_rbg, n_re, n_re_dd,
-                                         n_f, n_s, slot, stats)
+                txs += _mu_schedule_cell(c, cand, free, forced, current, pf_avg, la,
+                                         la_mu, fb, rbg_mask, rbg_f, rb_per_rbg, n_re,
+                                         n_re_dd, n_f, n_s, slot, stats)
             elif cand and free.any():
                 met = np.array([current[u][0].rank * np.log2(1 + 10 ** (current[u][1] / 10))
                                 / pf_avg[u] for u in cand])        # (n_cand, n_rbg)
@@ -361,6 +428,9 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                 g = hw[u, fm] @ w_cell[tb["cell"], fm]            # (Fsel, Ua, Lc)
                 cols = tb["col"][rbg_f[fm]][:, None] + np.arange(tb["rank"])
                 sinr = np.take_along_axis(mmse_sinr(g), cols, axis=1)
+                if first and tb.get("mu") and slot >= fb.warmup_slots:
+                    act = 10 * np.log10(max(2 ** np.mean(np.log2(1 + sinr)) - 1, 1e-6))
+                    diag["err"].append(tb["est_db"] - act)
             ok = decode_tb(tb, hw[u], fm, rbg_f, nrb_f, rng, sinr)
             if first:
                 (la_mu if tb.get("mu") else la).update(u, ok)
@@ -404,7 +474,9 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         mean_ues_per_rbg=float(np.mean(mu_stats["ues"])) if mu_stats["ues"] else 1.0,
         mean_layers_per_rbg=(float(np.mean(mu_stats["layers"])) if mu_stats["layers"]
                              else float(np.mean(rank_log)) if rank_log else 0.0),
-        mu_tb_fraction=n_mu_first / max(n_first, 1))
+        mu_tb_fraction=n_mu_first / max(n_first, 1),
+        retx_rbg_fraction=diag["retx_rbg"] / max(diag["rbg"], 1),
+        mu_sinr_error_db=float(np.mean(diag["err"])) if diag["err"] else 0.0)
 
 
 def _fb_worker(args):
@@ -432,5 +504,7 @@ def run_full_buffer(cfg: ScenarioConfig, fb: FullBufferConfig, n_drops: int,
         "mean_ues_per_rbg": float(np.mean([r.mean_ues_per_rbg for r in res])),
         "mean_layers_per_rbg": float(np.mean([r.mean_layers_per_rbg for r in res])),
         "mu_tb_fraction": float(np.mean([r.mu_tb_fraction for r in res])),
+        "retx_rbg_fraction": float(np.mean([r.retx_rbg_fraction for r in res])),
+        "mu_sinr_error_db": float(np.mean([r.mu_sinr_error_db for r in res])),
     }
 
