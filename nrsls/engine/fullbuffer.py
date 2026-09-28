@@ -333,10 +333,19 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                 w_cell[tb["cell"], fm, :, :tb["rank"]] = tb_precoder(tb, fm, rbg_f)
 
         # 2. interference covariance and whitening, per UT and frequency
-        gi = h[:, 1:] @ w_cell[cells[:, 1:]]               # (U, K, F, Ua, Lc)
-        x = np.moveaxis(gi, 1, 3).reshape(n_ue, n_f, n_u, -1)   # (U, F, Ua, Lc K)
-        r_cov = (x @ np.conj(np.swapaxes(x, -1, -2))
-                 + (1.0 + rest)[:, None, None, None] * np.eye(n_u))
+        if fb.mu_mimo:
+            # one interferer at a time: w_cell[cells] with 8 layers would
+            # copy ~1.3 GB for the default system
+            r_cov = np.broadcast_to((1.0 + rest)[:, None, None, None] * np.eye(n_u),
+                                    (n_ue, n_f, n_u, n_u)).astype(np.complex64)
+            for j in range(1, k + 1):
+                gi = h[:, j] @ w_cell[cells[:, j]]         # (U, F, Ua, Lc)
+                r_cov += gi @ np.conj(np.swapaxes(gi, -1, -2))
+        else:
+            gi = h[:, 1:] @ w_cell[cells[:, 1:]]           # (U, K, F, Ua, 4)
+            x = np.moveaxis(gi, 1, 3).reshape(n_ue, n_f, n_u, -1)   # (U, F, Ua, 4K)
+            r_cov = (x @ np.conj(np.swapaxes(x, -1, -2))
+                     + (1.0 + rest)[:, None, None, None] * np.eye(n_u))
         lw = whitening(r_cov.astype(np.complex128))       # (U, F, Ua, Ua)
         hw = lw @ h[:, 0]                                 # (U, F, Ua, S)
 
