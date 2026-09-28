@@ -12,7 +12,38 @@ python examples/run_full_buffer.py --tag p3                                 # SU
 python examples/plot_su_vs_mu.py
 ```
 
-> **Status:** the 4-drop system runs are in progress; the results section follows.
+## Results
+
+4 drops × 200 slots (40 warm-up), 2280 UTs per configuration, same drops and seeds for SU and MU. SU is the phase-3 run (RI ≤ 4, re-run with per-UT samples saved: bit-identical). MU uses RI ≤ 2, ≤ 2 UTs and ≤ 4 layers per RBG.
+
+| Reports | Mode | Cell SE [bit/s/Hz] | 5 %-ile UT SE | Median UT SE | 1st-tx BLER | Mean MCS | UTs / layers per RBG | MU SINR estimate − actual | Runtime [s] |
+|---|---|---|---|---|---|---|---|---|---|
+| Type-I (sub-band i2) | SU | 5.83 | 0.192 | 0.508 | 0.117 | 15.1 | 1 / 2.18 | – | 589 |
+| | MU | **7.24 (+24 %)** | **0.223 (+16 %)** | 0.605 (+19 %) | 0.113 | 11.1 | 1.95 / 3.65 | +1.6 dB | 638 |
+| eType-II (combination 6) | SU | 6.13 | 0.213 | 0.531 | 0.116 | 15.6 | 1 / 2.18 | – | 840 |
+| | MU | **8.11 (+32 %)** | **0.268 (+26 %)** | 0.692 (+30 %) | 0.102 | 11.8 | 1.99 / 3.83 | +0.9 dB | 736 |
+| SVD (ideal, wideband) | SU | 6.27 | 0.209 | 0.542 | 0.115 | 14.5 | 1 / 2.44 | – | 561 |
+| | MU | **8.27 (+32 %)** | **0.265 (+27 %)** | 0.702 (+30 %) | 0.101 | 12.0 | 1.99 / 3.84 | +0.8 dB | 609 |
+
+Sensitivity, eType-II with ≤ 4 UTs / ≤ 8 layers per RBG: cell SE 7.29, 5 %-ile 0.243, median 0.625, 2.74 UTs / 5.26 layers per RBG, MU SINR estimate +1.6 dB. That is 10 % below the 2-UT default.
+
+![SU vs MU](../results/p4_su_vs_mu_cdf.png)
+
+### Observations
+
+- **MU-MIMO gains 24–32 % in cell SE and 16–27 % at the cell edge** over SU with the same reports, at about 2 co-scheduled UTs × 1.9 layers per RBG. Almost every TB (99–100 %) is co-scheduled. The per-layer SINR drops (mean MCS 15 → 11–12), but twice the UTs share each RBG.
+- **eType-II's advantage over Type-I grows in MU**, as expected. It is +12 % in cell SE and +21 % at the 5th percentile in MU, against +5 % / +11 % in SU. eType-II reaches 98 % of the unquantised-SVD MU cell SE, so its 678-bit report carries almost all of what ideal wideband CSI gives the ZF precoder.
+- **Type-I pairs as often but pairs worse.** Its coarse single-beam PMI hides the leakage between co-scheduled UTs. The gNB's MU-SINR estimate is 1.6 dB optimistic for Type-I, against 0.8–0.9 dB for eType-II / SVD, and OLLA runs a higher BLER (11.3 %).
+- **Link adaptation holds the target**, at 10–11 % first-transmission BLER with the separate MU OLLA.
+- **Compared with ITU-R M.2410.** The dense-urban eMBB minimum requirements are 7.8 bit/s/Hz average and 0.225 bit/s/Hz at the 5th percentile. eType-II and SVD MU exceed both numerically (8.11 / 0.268), and Type-I MU is just below (7.24 / 0.223). This is still **not** a like-for-like evaluation. M.2412 Dense Urban-eMBB uses a 200 m ISD macro layer at 4 GHz with 80 % indoor UTs at 3 km/h and 20 % in cars at 30 km/h, and it assumes TDD and its own overhead accounting. Here it is UMa at 500 m ISD, 3.5 GHz, all UTs at 3 km/h, with every slot downlink and no overheads beyond DM-RS.
+
+## Simplifications (to revisit)
+
+- **SU CSI only.** There is no MU-CQI and no rank adaptation for MU: RI is restricted to ≤ 2 for all UTs. A UT reporting rank > 2 would only be scheduled alone (not exercised with RI ≤ 2).
+- **ZF on the reports**, without regularisation by the SINR (RZF / SLNR) and without per-layer power allocation.
+- **Greedy pairing is myopic** (see above); no user grouping or angular pre-selection.
+- **Ideal DM-RS channel estimation** of the co-scheduled layers at the UT.
+- **DM-RS overhead from the layer count only.** Other overheads (CSI-RS, SSB, PDCCH) are not modelled, as in phase 3.
 
 ## Method
 

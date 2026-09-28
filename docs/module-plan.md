@@ -319,7 +319,7 @@ dominant cost. The plan to keep it tractable:
 | **P2 – Fast fading** | LSPs with spatial consistency, §7.5 cluster/ray generator (shared kernel with LLS CDL), H per RB per slot | DS/ASD/ZSD/singular-value CDFs vs §7.8 calibration; multi-path (TR 36.873 eq. 8.1-1) coupling gain and geometry within the RP-180524 company envelope (channel model A, `refs/rp180524/`, see calibration-p1.md) |
 | **P3 – Full-buffer SU-MIMO** | MMSE-IRC SINR, SVD precoding first, then Type-I and Rel-16 eType-II codebooks (with CSI payload size), CSI with delay, PF scheduler, per-UE OLLA, multi-process HARQ, L2S | cell avg / 5 %-ile SE in line with 38.802 / M.2412 industry results; LLS↔SLS regression passes |
 | **P4 – Traffic & load** | FTP model 1/3, RU-dependent interference, UPT metrics | UPT vs RU curves |
-| **P5 – Extensions** | MU-MIMO (eType-II is the main enabler), Type-I multi-panel, Rel-17 FeType-II port selection, TDD pattern + SRS reciprocity, FR2 (beam management, phase noise), UL | per-feature |
+| **P5 – Extensions** | MU-MIMO (eType-II is the main enabler; **done**, see [results-p4-mu.md](results-p4-mu.md)), Type-I multi-panel, Rel-17 FeType-II port selection, TDD pattern + SRS reciprocity, FR2 (beam management, phase noise), UL | per-feature |
 
 ---
 
