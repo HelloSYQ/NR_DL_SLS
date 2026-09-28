@@ -44,7 +44,9 @@ from ..phy.csi import CSIProcessor
 from ..phy.sinr import whitening
 from ..propagation.fast_fading import channel_batch, concat_clusters, subset_clusters
 from .drop import generate_drop
-from .link import decode_tb, new_tb, tb_precoder
+from ..mac.mu_mimo import greedy_pairing, unit_columns
+from ..phy.sinr import mmse_sinr
+from .link import decode_tb, make_tb, new_tb, tb_precoder
 
 
 @dataclass
@@ -70,6 +72,12 @@ class FullBufferConfig:
     harq_rtt_slots: int = 8
     pf_window_slots: float = 100.0
     link_batch: int = 128
+    # MU-MIMO (mac/mu_mimo.py): greedy pairing per RBG, ZF on the reports
+    mu_mimo: bool = False
+    mu_max_ues: int = 4               # co-scheduled UTs per RBG
+    mu_max_layers: int = 8            # total layers per RBG
+    mu_max_rank: int = 2              # layers per co-scheduled UT
+    mu_dmrs_overhead: bool = True     # > 4 layers on an RBG: double-symbol DM-RS
 
 
 @dataclass
@@ -85,6 +93,9 @@ class FullBufferResult:
     geometry_db: np.ndarray
     bandwidth_hz: float
     n_cells: int
+    mean_ues_per_rbg: float = 1.0     # co-scheduled UTs per used RBG
+    mean_layers_per_rbg: float = 0.0  # layers per used RBG
+    mu_tb_fraction: float = 0.0       # first transmissions with co-scheduling
 
 
 def _links(d, k):
@@ -95,6 +106,80 @@ def _links(d, k):
     serving = d.serving_cell
     others = np.array([[c for c in order[:, i] if c != serving[i]][:k] for i in u])
     return np.column_stack([serving, others])
+
+
+def _report_vectors(rep, n_rbg, first_f):
+    """Unit-column reported precoder per RBG (n_rbg, S, r) for pairing."""
+    w = rep.w
+    if rep.w_per_f:
+        w = w[first_f]
+    elif w.ndim == 2:
+        w = np.broadcast_to(w, (n_rbg,) + w.shape)
+    return unit_columns(np.asarray(w, np.complex128))
+
+
+def _mu_schedule_cell(c, cand, free, current, pf_avg, la, la_mu, fb, rbg_mask,
+                      rbg_f, rb_per_rbg, n_re, n_re_dd, n_f, n_s, slot, stats):
+    """MU-MIMO TBs of cell ``c`` on its free RBGs (see mac/mu_mimo.py).
+
+    Every TB carries a per-frequency-point precoder (F, S, r) and, per RBG,
+    the column offset ``col`` of its layers among the cell's layers.  A TB
+    sharing an RBG with more than 4 layers in total needs DM-RS ports 4-7,
+    i.e. double-symbol DM-RS, and gets ``n_re_dd`` data REs per RB."""
+    n_rbg = len(free)
+    met = np.array([current[u][0].rank * np.log2(1 + 10 ** (current[u][1] / 10))
+                    / pf_avg[u] for u in cand])                 # (n_cand, n_rbg)
+    best = np.argmax(met, axis=0)
+    pool = [u for u in cand if current[u][0].rank <= fb.mu_max_rank]
+    rank = {u: current[u][0].rank for u in cand}
+    pf = {u: pf_avg[u] for u in cand}
+    per_ue = {}
+    for b in np.nonzero(free)[0]:
+        o = cand[best[b]]
+        if rank[o] > fb.mu_max_rank or fb.mu_max_ues < 2:
+            group, w, est, uid = [o], None, None, None
+        else:
+            v = {u: current[u][2][b] for u in set(pool) | {o}}
+            s_lin = {u: 10 ** (current[u][1][b] / 10) for u in v}
+            s_mu = {u: s_lin[u] * 10 ** (-(la_mu.offset[u] - la.offset[u]) / 10)
+                    for u in v}
+            group, w, est, uid = greedy_pairing(o, pool, v, s_lin, rank, pf,
+                                                fb.mu_max_ues, fb.mu_max_layers, s_mu)
+        stats["ues"].append(len(group))
+        stats["layers"].append(sum(rank[u] for u in group))
+        for u in group:
+            per_ue.setdefault(u, []).append((b, group, w, est, uid))
+    txs = []
+    for u in cand:                        # same TB (and random draw) order as SU
+        if u not in per_ue:
+            continue
+        alloc = per_ue[u]
+        rep, sinr_sb = current[u][:2]
+        r = rep.rank
+        w_f = np.zeros((n_f, n_s, r), np.complex128)
+        col = np.zeros(n_rbg, int)
+        sinr_db, mu, dd = [], False, False
+        for b, group, w, est, uid in alloc:
+            dd |= sum(rank[x] for x in group) > 4
+            fm = rbg_mask[b]
+            if len(group) == 1:
+                w_f[fm] = tb_precoder({"w": rep.w, "w_per_f": rep.w_per_f}, fm, rbg_f)
+                sinr_db.append(sinr_sb[b])
+            else:
+                mu = True
+                mine = np.nonzero(uid == u)[0]
+                w_f[fm] = w[:, mine] / np.sqrt(len(uid))
+                col[b] = mine[0]
+                # raw estimate: the MU OLLA back-off is applied by la_mu
+                raw = est[mine] * 10 ** ((la_mu.offset[u] - la.offset[u]) / 10)
+                se = np.mean(np.log2(1 + raw))
+                sinr_db.append(10 * np.log10(max(2 ** se - 1, 1e-6)))
+        rbgs = np.array([a[0] for a in alloc])
+        txs.append(make_tb(la_mu if mu else la, u, c, r, w_f, True,
+                           np.array(sinr_db), rbgs, rb_per_rbg,
+                           n_re_dd if dd and fb.mu_dmrs_overhead else n_re,
+                           fb.mcs_table, slot, col=col, mu=mu))
+    return txs
 
 
 def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
@@ -166,6 +251,14 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     pdsch = PDSCHConfig(num_rb=n_rb)
     n_re = tbs_mod.re_per_rb(pdsch.num_symbols, rg.dmrs_re_per_rb(pdsch), pdsch.n_oh)
     la = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db)
+    la_mu = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db)
+    # type-1 double-symbol DM-RS (ports 0-7): front-loaded + 1 additional
+    # pair, 2 CDM groups without data -> 4 x 12 DM-RS REs per RB
+    n_re_dd = tbs_mod.re_per_rb(pdsch.num_symbols, 4 * 12, pdsch.n_oh)
+    n_lay = max(4, fb.mu_max_layers) if fb.mu_mimo else 4
+    first_f = np.argmax(rbg_mask, axis=1)                   # first point of each RBG
+    mu_stats = {"ues": [], "layers": []}
+    n_mu_first = 0
     proc = CSIProcessor(bs.Np, bs.Mp, 4, 4 if bs.Mp > 1 else 1,
                         codebook=fb.codebook,
                         max_rank=min(fb.max_rank, n_u), mcs_table=fb.mcs_table,
@@ -191,7 +284,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                 current[u] = pending[u].pop(0)[1:]
 
         # 1. scheduling
-        w_cell = np.zeros((lay.n_cells, n_f, n_s, 4), np.complex64)
+        w_cell = np.zeros((lay.n_cells, n_f, n_s, n_lay), np.complex64)
         txs = []
         due = [tb for tb in harq if tb["due"] <= slot]
         harq = [tb for tb in harq if tb["due"] > slot]
@@ -202,12 +295,21 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                 if free[tb["rbgs"]].all():
                     free[tb["rbgs"]] = False
                     busy.add(tb["ue"])
+                    if fb.mu_mimo:            # retransmitted alone, full power
+                        tb["col"] = np.zeros(n_rbg, int)
+                        nrm = np.linalg.norm(tb["w"], axis=(1, 2), keepdims=True)
+                        tb["w"] = np.where(nrm > 0, tb["w"] / np.maximum(nrm, 1e-12), 0)
                     txs.append(tb)
                 else:
                     tb["due"] = slot + 1
                     harq.append(tb)
             cand = [u for u in ue_of_cell[c] if current[u] is not None and u not in busy]
-            if cand and free.any():
+            if cand and free.any() and fb.mu_mimo:
+                stats = mu_stats if slot >= fb.warmup_slots else {"ues": [], "layers": []}
+                txs += _mu_schedule_cell(c, cand, free, current, pf_avg, la, la_mu, fb,
+                                         rbg_mask, rbg_f, rb_per_rbg, n_re, n_re_dd,
+                                         n_f, n_s, slot, stats)
+            elif cand and free.any():
                 met = np.array([current[u][0].rank * np.log2(1 + 10 ** (current[u][1] / 10))
                                 / pf_avg[u] for u in cand])        # (n_cand, n_rbg)
                 owner = np.where(free, np.argmax(met, axis=0), -1)
@@ -215,19 +317,24 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                     rbgs = np.nonzero(owner == i)[0]
                     if rbgs.size == 0:
                         continue
-                    rep, sinr_sb = current[u]
+                    rep, sinr_sb = current[u][:2]
                     txs.append(new_tb(la, u, c, rep, sinr_sb, rbgs, rb_per_rbg,
                                       n_re, fb.mcs_table, slot))
             elif not any(t["cell"] == c for t in txs) and ue_of_cell[c].size:
                 g = rng.normal(size=(n_s,)) + 1j * rng.normal(size=(n_s,))
                 w_cell[c, :, :, 0] = g / np.linalg.norm(g)
         for tb in txs:
-            fm = rbg_mask[tb["rbgs"]].any(axis=0)
-            w_cell[tb["cell"], fm, :, :tb["rank"]] = tb_precoder(tb, fm, rbg_f)
+            if fb.mu_mimo:
+                for b in tb["rbgs"]:
+                    fm, o = rbg_mask[b], tb["col"][b]
+                    w_cell[tb["cell"], fm, :, o:o + tb["rank"]] = tb["w"][fm]
+            else:
+                fm = rbg_mask[tb["rbgs"]].any(axis=0)
+                w_cell[tb["cell"], fm, :, :tb["rank"]] = tb_precoder(tb, fm, rbg_f)
 
         # 2. interference covariance and whitening, per UT and frequency
-        gi = h[:, 1:] @ w_cell[cells[:, 1:]]               # (U, K, F, Ua, 4)
-        x = np.moveaxis(gi, 1, 3).reshape(n_ue, n_f, n_u, -1)   # (U, F, Ua, 4K)
+        gi = h[:, 1:] @ w_cell[cells[:, 1:]]               # (U, K, F, Ua, Lc)
+        x = np.moveaxis(gi, 1, 3).reshape(n_ue, n_f, n_u, -1)   # (U, F, Ua, Lc K)
         r_cov = (x @ np.conj(np.swapaxes(x, -1, -2))
                  + (1.0 + rest)[:, None, None, None] * np.eye(n_u))
         lw = whitening(r_cov.astype(np.complex128))       # (U, F, Ua, Ua)
@@ -238,9 +345,18 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
             u = tb["ue"]
             fm = rbg_mask[tb["rbgs"]].any(axis=0)
             first = tb["ntx"] == 0
-            ok = decode_tb(tb, hw[u], fm, rbg_f, nrb_f, rng)
+            sinr = None
+            if fb.mu_mimo:
+                # MMSE over all layers of the serving cell: co-scheduled
+                # layers are interference the UT knows (DM-RS)
+                g = hw[u, fm] @ w_cell[tb["cell"], fm]            # (Fsel, Ua, Lc)
+                cols = tb["col"][rbg_f[fm]][:, None] + np.arange(tb["rank"])
+                sinr = np.take_along_axis(mmse_sinr(g), cols, axis=1)
+            ok = decode_tb(tb, hw[u], fm, rbg_f, nrb_f, rng, sinr)
             if first:
-                la.update(u, ok)
+                (la_mu if tb.get("mu") else la).update(u, ok)
+                if slot >= fb.warmup_slots:
+                    n_mu_first += int(bool(tb.get("mu")))
                 pf_avg[u] += tb["bits"] / fb.pf_window_slots
                 if slot >= fb.warmup_slots:
                     n_first += 1
@@ -261,7 +377,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                 rep = proc.select(hw[u], rbg_f, fb.rb_step, slot)
                 bits_log.append(rep.pmi_bits)
                 sinr_sb = la.cqi_sinr_db(rep.cqi_sb, rep.rank, fb.rbg_size)
-                pending[u].append((slot + fb.csi_delay_slots, rep, sinr_sb))
+                vec = _report_vectors(rep, n_rbg, first_f) if fb.mu_mimo else None
+                pending[u].append((slot + fb.csi_delay_slots, rep, sinr_sb, vec))
 
     t_meas = (fb.n_slots - fb.warmup_slots) * t_slot
     bw = n_rb * 12 * scs
@@ -274,7 +391,11 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         mean_mcs=float(np.mean(mcs_log)) if mcs_log else 0.0,
         mean_pmi_bits=float(np.mean(bits_log)) if bits_log else 0.0,
         serving_cell=d.serving_cell, geometry_db=d.geometry_db,
-        bandwidth_hz=bw, n_cells=lay.n_cells)
+        bandwidth_hz=bw, n_cells=lay.n_cells,
+        mean_ues_per_rbg=float(np.mean(mu_stats["ues"])) if mu_stats["ues"] else 1.0,
+        mean_layers_per_rbg=(float(np.mean(mu_stats["layers"])) if mu_stats["layers"]
+                             else float(np.mean(rank_log)) if rank_log else 0.0),
+        mu_tb_fraction=n_mu_first / max(n_first, 1))
 
 
 def _fb_worker(args):
@@ -299,5 +420,8 @@ def run_full_buffer(cfg: ScenarioConfig, fb: FullBufferConfig, n_drops: int,
         "mean_rank": float(np.mean([r.mean_rank for r in res])),
         "mean_mcs": float(np.mean([r.mean_mcs for r in res])),
         "mean_pmi_bits": float(np.mean([r.mean_pmi_bits for r in res])),
+        "mean_ues_per_rbg": float(np.mean([r.mean_ues_per_rbg for r in res])),
+        "mean_layers_per_rbg": float(np.mean([r.mean_layers_per_rbg for r in res])),
+        "mu_tb_fraction": float(np.mean([r.mu_tb_fraction for r in res])),
     }
 

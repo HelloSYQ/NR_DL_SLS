@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Phase 3: full-buffer SU-MIMO spectral efficiency.
+"""Full-buffer SU-MIMO (phase 3) or MU-MIMO spectral efficiency.
 
 Runs the default system (UMa 3.5 GHz, 100 MHz, 32T4R) with Type-I,
 Rel-16 eType-II (parameter combination 6) and SVD (ideal-CSI reference)
-precoding and writes
+reports and writes
 
-  results/p3_full_buffer.json   cell / 5th-percentile / median UT SE, BLER,
-                                rank, MCS per configuration
-  results/p3_ue_se_cdf.png      CDF of the UT spectral efficiency
+  results/<tag>_full_buffer.json   cell / 5th-percentile / median UT SE, BLER,
+                                   rank, MCS, co-scheduling per configuration,
+                                   and the per-UT SE samples
+  results/<tag>_ue_se_cdf.png      CDF of the UT spectral efficiency
 
     python examples/run_full_buffer.py [--drops 4] [--jobs 4] [--slots 200]
+    python examples/run_full_buffer.py --mu --max-rank 2 --tag p4_mu
 """
 
 from __future__ import annotations
@@ -39,13 +41,19 @@ def main():
     ap.add_argument("--ue-per-cell", type=int, default=10)
     ap.add_argument("--codebooks", nargs="+", default=["type1", "etype2", "svd"])
     ap.add_argument("--tag", default="p3")
+    ap.add_argument("--mu", action="store_true", help="MU-MIMO scheduling")
+    ap.add_argument("--max-rank", type=int, default=4, help="CSI rank restriction")
+    ap.add_argument("--mu-max-ues", type=int, default=4)
+    ap.add_argument("--mu-max-layers", type=int, default=8)
     args = ap.parse_args()
 
     cfg = get_preset(args.preset, ue_per_cell=args.ue_per_cell)
     summary, ue_se = {}, {}
     for cb in args.codebooks:
         fb = FullBufferConfig(n_slots=args.slots, warmup_slots=args.warmup,
-                              codebook=cb)
+                              codebook=cb, max_rank=args.max_rank, mu_mimo=args.mu,
+                              mu_max_ues=args.mu_max_ues,
+                              mu_max_layers=args.mu_max_layers)
         t0 = time.time()
         r = run_full_buffer(cfg, fb, args.drops, seed=1, n_jobs=args.jobs)
         ue_se[cb] = r["ue_se"]
@@ -56,13 +64,19 @@ def main():
               f"p50 {r['ue_se_p50']:.3f}  BLER1 {r['bler_first']:.3f}  "
               f"rank {r['mean_rank']:.2f}  MCS {r['mean_mcs']:.1f}  "
               f"PMI bits {r['mean_pmi_bits']:.0f}  "
+              f"UTs/RBG {r['mean_ues_per_rbg']:.2f}  layers/RBG "
+              f"{r['mean_layers_per_rbg']:.2f}  MU TBs {r['mu_tb_fraction']:.2f}  "
               f"({summary[cb]['runtime_s']} s)", flush=True)
 
     os.makedirs(OUT, exist_ok=True)
     meta = {"preset": cfg.name, "drops": args.drops, "slots": args.slots,
-            "warmup": args.warmup, "ue_per_cell": args.ue_per_cell}
+            "warmup": args.warmup, "ue_per_cell": args.ue_per_cell,
+            "mu_mimo": args.mu, "max_rank": args.max_rank,
+            "mu_max_ues": args.mu_max_ues, "mu_max_layers": args.mu_max_layers}
     with open(os.path.join(OUT, f"{args.tag}_full_buffer.json"), "w") as f:
-        json.dump({"config": meta, "results": summary}, f, indent=1)
+        json.dump({"config": meta, "results": summary,
+                   "ue_se": {k: [round(float(x), 5) for x in v] for k, v in ue_se.items()}},
+                  f, indent=1)
 
     import matplotlib
     matplotlib.use("Agg")
@@ -73,7 +87,7 @@ def main():
               "etype2": "eType-II codebook"}
     cdf.plot_cdfs(ax, {labels.get(k, k): v for k, v in ue_se.items()},
                   "UT spectral efficiency [bit/s/Hz]",
-                  title=f"{cfg.name}: full buffer, SU-MIMO, "
+                  title=f"{cfg.name}: full buffer, {'MU' if args.mu else 'SU'}-MIMO, "
                         f"{args.ue_per_cell} UTs/cell")
     fig.tight_layout()
     path = os.path.join(OUT, f"{args.tag}_ue_se_cdf.png")
