@@ -81,7 +81,12 @@ class FullBufferConfig:
     mu_max_ues: int = 2               # co-scheduled UTs per RBG
     mu_max_layers: int = 4            # total layers per RBG (<= 4: 1-symbol DM-RS)
     mu_max_rank: int = 2              # layers per co-scheduled UT
-    mu_dmrs_overhead: bool = True     # > 4 layers on an RBG: double-symbol DM-RS
+    # > 4 layers on an RBG need DM-RS ports 4-7 (type 1, double symbol).  With
+    # a double-symbol front-loaded DM-RS and no additional position (the
+    # low-mobility configuration) that costs the same 24 REs/PRB as the
+    # single-symbol + 1 additional DM-RS of <= 4 layers, so no extra overhead
+    # by default; True charges double-symbol + 1 additional pair (48 REs)
+    mu_dmrs_overhead: bool = False
 
 
 @dataclass
@@ -305,7 +310,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     n_re = tbs_mod.re_per_rb(pdsch.num_symbols, rg.dmrs_re_per_rb(pdsch), pdsch.n_oh)
     la = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db)
     la_mu = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db)
-    # type-1 double-symbol DM-RS (ports 0-7): front-loaded + 1 additional
+    # mu_dmrs_overhead: type-1 double-symbol DM-RS (ports 0-7), front-loaded
+    # + 1 additional pair, 2 CDM groups without data -> 4 x 12 REs per RB
     # pair, 2 CDM groups without data -> 4 x 12 DM-RS REs per RB
     n_re_dd = tbs_mod.re_per_rb(pdsch.num_symbols, 4 * 12, pdsch.n_oh)
     n_lay = max(4, fb.mu_max_layers) if fb.mu_mimo else 4
