@@ -15,6 +15,8 @@ covariance of the measurement slot (TS 38.214 clause 5.2.2.1).
     chosen per sub-band; i1 maximises the sum of the per-sub-band best rates.
     ``codebook='svd'`` instead uses the wideband dominant right singular
     vectors (an ideal-CSI bound);
+    ``codebook='svd_sb'`` the unquantised dominant eigenvectors per sub-band
+    (ideal sub-band CSI, the reference for eType-II);
     ``codebook='svd_rb'`` the dominant right singular vectors of every
     frequency point (ideal per-RB precoding, the ``nrdlsim`` LLS precoder).
   * CQI: MIESM over the layer SINRs of each sub-band (and the whole band);
@@ -186,6 +188,14 @@ class CSIProcessor:
                 _, vec = np.linalg.eigh(cov)
                 w = vec[:, ::-1][:, :rank] / np.sqrt(rank)
                 pmi = ()
+            elif self.codebook == "svd_sb":
+                n_sb = int(subband_of_f.max()) + 1
+                onehot = (subband_of_f[None, :] == np.arange(n_sb)[:, None]).astype(float)
+                cov_f = np.einsum("fus,fut->fst", np.conj(hw), hw)
+                cov = np.tensordot(onehot, cov_f, axes=(1, 0))        # (N_sb, S, S)
+                _, vec = np.linalg.eigh(cov)
+                w = vec[..., ::-1][..., :rank] / np.sqrt(rank)        # (N_sb, S, r)
+                pmi = ()
             elif self.codebook == "svd_rb":
                 _, _, vh = np.linalg.svd(hw, full_matrices=False)
                 w = np.conj(np.swapaxes(vh[:, :rank], -1, -2)) / np.sqrt(rank)
@@ -193,7 +203,8 @@ class CSIProcessor:
             else:
                 w, pmi = self._type1_pmi(hw, subband_of_f, rank)
                 bits = self._type1_bits(rank, w.shape[0] if w.ndim == 3 else 1)
-            w_f = w[subband_of_f] if (w.ndim == 3 and self.codebook == "type1") else w
+            w_f = (w[subband_of_f] if (w.ndim == 3 and self.codebook in ("type1", "svd_sb"))
+                   else w)
             sinr = mmse_sinr(hw @ w_f)                                 # (F, r)
             cqi_wb = self._cqi(sinr, rank, n_f * rb_per_f)
             se = mcs_tables.get_cqi(cqi_wb, self.cqi_table)[2]

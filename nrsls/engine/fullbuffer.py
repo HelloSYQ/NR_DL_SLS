@@ -59,7 +59,7 @@ class FullBufferConfig:
     csi_period_slots: int = 10       # 5 ms CSI periodicity
     csi_delay_slots: int = 4
     rbg_size: int = 16                # also the CSI sub-band size
-    codebook: str = "type1"           # 'type1', 'etype2', 'svd' or 'svd_rb'
+    codebook: str = "type1"           # 'type1', 'etype2', 'svd', 'svd_sb', 'svd_rb'
     etype2_combo: int = 6             # Table 5.2.2.2.5-1 parameter combination
     n_beams: int = 4                  # Type-I beams kept after stage 1
     type1_subband_pmi: bool = True    # Type-I i2 per sub-band (else wideband)

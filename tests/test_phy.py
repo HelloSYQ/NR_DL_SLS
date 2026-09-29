@@ -154,3 +154,13 @@ def test_etype2_beats_type1_and_improves_with_resolution():
         g_t1.append(_eig_gain(hw, np.broadcast_to(rep.w, (18, 32, 1)), sb))
     assert np.mean(g_big) > np.mean(g_small) > np.mean(g_t1)
     assert np.mean(g_big) > 0.85
+
+
+def test_svd_subband_report_is_per_subband_and_beats_wideband():
+    rng = np.random.default_rng(7)
+    hw = _multipath_channel(rng)
+    sb = np.repeat(np.arange(18), 2)
+    sub = CSIProcessor(8, 2, codebook="svd_sb", max_rank=1).select(hw, sb, 2, 0)
+    wb = CSIProcessor(8, 2, codebook="svd", max_rank=1).select(hw, sb, 2, 0)
+    assert sub.w.shape == (18, 32, 1) and np.allclose(np.linalg.norm(sub.w, axis=1), 1)
+    assert _eig_gain(hw, sub.w, sb) > _eig_gain(hw, np.broadcast_to(wb.w, (18, 32, 1)), sb)
