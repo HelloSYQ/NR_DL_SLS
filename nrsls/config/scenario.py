@@ -113,6 +113,9 @@ class ScenarioConfig:
     carrier: CarrierConfig = field(
         default_factory=lambda: CarrierConfig(mu=1, n_size_grid=273))
     noise_bandwidth_hz: Optional[float] = None  # None: occupied bandwidth
+    # channel bandwidth that spectral efficiencies are normalised by (ITU-R
+    # M.2410: throughput / channel bandwidth); None: the occupied bandwidth
+    channel_bandwidth_hz: Optional[float] = None
     bs_tx_power_dbm: float = 53.0     # total over the carrier
     ue_noise_figure_db: float = 9.0
 
@@ -124,6 +127,7 @@ class ScenarioConfig:
     in_car_ratio: float = 0.0         # fraction of outdoor UTs inside cars
     car_loss_db: tuple = (9.0, 5.0)   # TR 38.901 7.4.3.2: N(mu, sigma)
     ue_speed_kmh: float = 3.0
+    in_car_speed_kmh: Optional[float] = None   # in-car UTs; None: ue_speed_kmh
 
     # --- O2I building penetration (TR 38.901 7.4.3.1) ---
     # 'low' | 'high' | 'mixed' (high-loss share = o2i_high_loss_ratio) |
@@ -388,6 +392,31 @@ def rp180524_inh(trxp_per_site: int = 1, **overrides) -> ScenarioConfig:
     return replace(cfg, **overrides)
 
 
+def dense_urban_a(**overrides) -> ScenarioConfig:
+    """ITU-R M.2412 Table 5b, Dense Urban-eMBB configuration A (macro layer),
+    FDD 10 MHz (the TR 37.910 Table 5.4.1.2.1-1(a) set-up).
+
+    19 sites x 3 TRxPs, ISD 200 m, BS at 25 m, 4 GHz, 41 dBm per 10 MHz,
+    15 kHz SCS (52 PRB), BS element 8 dBi, UE NF 7 dB, 10 UTs per TRxP:
+    80 % indoor (20 % high-loss / 80 % low-loss buildings, 3 km/h), 20 %
+    outdoor in cars (30 km/h).  gNB 32T: (M, N, P, Mg, Ng; Mp, Np) =
+    (8, 8, 2, 1, 1; 2, 8); UT 4 ports (1, 2, 2).  Channel model A: the
+    TR 38.901 UMa model (matches the RP-180524 UMa calibration).
+    Spectral efficiency is normalised by the 10 MHz channel bandwidth.
+    """
+    ant = BSAntennaConfig(M=8, N=8, P=2, Mp=2, Np=8, dV=0.5, dH=0.5,
+                          electrical_tilt_deg=102.0)
+    cfg = uma(name="Dense Urban-eMBB A (FDD 10 MHz)", isd_m=200.0,
+              carrier_freq_hz=4e9, carrier=CarrierConfig(mu=0, n_size_grid=52),
+              noise_bandwidth_hz=None, channel_bandwidth_hz=10e6,
+              bs_tx_power_dbm=41.0, ue_noise_figure_db=7.0, min_d2d_m=10.0,
+              indoor_ratio=0.8, in_car_ratio=1.0, ue_speed_kmh=3.0,
+              in_car_speed_kmh=30.0, o2i_model="mixed", o2i_high_loss_ratio=0.2,
+              bs_antenna=ant, ue_antenna=UEAntenna(M=1, N=2, P=2))
+    return replace(cfg, **overrides)
+
+
+PRESETS["du-a"] = dense_urban_a
 PRESETS["rp-inh-12trxp"] = lambda **kw: rp180524_inh(1, **kw)
 PRESETS["rp-inh-36trxp"] = lambda **kw: rp180524_inh(3, **kw)
 

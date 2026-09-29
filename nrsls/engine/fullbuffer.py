@@ -72,6 +72,10 @@ class FullBufferConfig:
     harq_rtt_slots: int = 8
     pf_window_slots: float = 100.0
     link_batch: int = 128
+    # overhead beyond DM-RS: PDCCH symbols at the slot start, and the average
+    # CSI-RS / CSI-IM / TRS / SSB REs per PRB and slot (TBS N_oh)
+    pdcch_symbols: int = 1            # PDSCH = symbols pdcch_symbols..13
+    overhead_re_per_prb: int = 0
     # MU-MIMO (mac/mu_mimo.py): greedy pairing per RBG, ZF on the reports
     mu_mimo: bool = False
     mu_max_ues: int = 2               # co-scheduled UTs per RBG
@@ -265,8 +269,10 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     bearing = lay.cell_bearing_deg[cells].reshape(-1)
     d3d = d.d3d_m[flat_sites, flat_ues]
     phi = rng.uniform(0, 2 * np.pi, n_ue)
-    v = cfg.ue_speed_kmh / 3.6 * np.stack([np.cos(phi), np.sin(phi),
-                                           np.zeros(n_ue)], -1)
+    speed = np.full(n_ue, cfg.ue_speed_kmh / 3.6)
+    if cfg.in_car_speed_kmh is not None:
+        speed[d.ues.in_car] = cfg.in_car_speed_kmh / 3.6
+    v = speed[:, None] * np.stack([np.cos(phi), np.sin(phi), np.zeros(n_ue)], -1)
     vel = v[flat_ues]
 
     # --- frequency grid, RBGs, sub-bands ---
@@ -294,7 +300,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         return h.reshape(n_ue, k + 1, n_f, n_u, n_s)
 
     # --- PHY / MAC state ---
-    pdsch = PDSCHConfig(num_rb=n_rb)
+    pdsch = PDSCHConfig(num_rb=n_rb, start_symbol=fb.pdcch_symbols,
+                        num_symbols=14 - fb.pdcch_symbols, n_oh=fb.overhead_re_per_prb)
     n_re = tbs_mod.re_per_rb(pdsch.num_symbols, rg.dmrs_re_per_rb(pdsch), pdsch.n_oh)
     la = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db)
     la_mu = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db)
@@ -460,7 +467,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                 pending[u].append((slot + fb.csi_delay_slots, rep, sinr_sb, vec))
 
     t_meas = (fb.n_slots - fb.warmup_slots) * t_slot
-    bw = n_rb * 12 * scs
+    bw = cfg.channel_bandwidth_hz or n_rb * 12 * scs
     tput = bits / t_meas
     return FullBufferResult(
         ue_throughput_bps=tput, ue_se=tput / bw,

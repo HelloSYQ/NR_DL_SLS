@@ -45,6 +45,12 @@ def main():
     ap.add_argument("--max-rank", type=int, default=4, help="CSI rank restriction")
     ap.add_argument("--mu-max-ues", type=int, default=2)
     ap.add_argument("--mu-max-layers", type=int, default=4)
+    ap.add_argument("--rbg-size", type=int, default=16, help="RBG = CSI sub-band [PRB]")
+    ap.add_argument("--channel-update", type=int, default=10, help="slots per update")
+    ap.add_argument("--csi-period", type=int, default=10, help="slots")
+    ap.add_argument("--pdcch", type=int, default=1, help="PDCCH symbols")
+    ap.add_argument("--overhead-re", type=int, default=0,
+                    help="CSI-RS/TRS/SSB REs per PRB and slot")
     args = ap.parse_args()
 
     cfg = get_preset(args.preset, ue_per_cell=args.ue_per_cell)
@@ -53,7 +59,12 @@ def main():
         fb = FullBufferConfig(n_slots=args.slots, warmup_slots=args.warmup,
                               codebook=cb, max_rank=args.max_rank, mu_mimo=args.mu,
                               mu_max_ues=args.mu_max_ues,
-                              mu_max_layers=args.mu_max_layers)
+                              mu_max_layers=args.mu_max_layers,
+                              rbg_size=args.rbg_size,
+                              channel_update_slots=args.channel_update,
+                              csi_period_slots=args.csi_period,
+                              pdcch_symbols=args.pdcch,
+                              overhead_re_per_prb=args.overhead_re)
         t0 = time.time()
         r = run_full_buffer(cfg, fb, args.drops, seed=1, n_jobs=args.jobs)
         ue_se[cb] = r["ue_se"]
@@ -74,7 +85,10 @@ def main():
     meta = {"preset": cfg.name, "drops": args.drops, "slots": args.slots,
             "warmup": args.warmup, "ue_per_cell": args.ue_per_cell,
             "mu_mimo": args.mu, "max_rank": args.max_rank,
-            "mu_max_ues": args.mu_max_ues, "mu_max_layers": args.mu_max_layers}
+            "mu_max_ues": args.mu_max_ues, "mu_max_layers": args.mu_max_layers,
+            "rbg_size": args.rbg_size, "channel_update_slots": args.channel_update,
+            "csi_period_slots": args.csi_period, "pdcch_symbols": args.pdcch,
+            "overhead_re_per_prb": args.overhead_re}
     with open(os.path.join(OUT, f"{args.tag}_full_buffer.json"), "w") as f:
         json.dump({"config": meta, "results": summary,
                    "ue_se": {k: [round(float(x), 5) for x in v] for k, v in ue_se.items()}},
