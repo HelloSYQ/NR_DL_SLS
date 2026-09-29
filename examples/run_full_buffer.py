@@ -12,6 +12,9 @@ reports and writes
 
     python examples/run_full_buffer.py [--drops 4] [--jobs 4] [--slots 200]
     python examples/run_full_buffer.py --mu --max-rank 2 --tag p4_mu
+    python examples/run_full_buffer.py --preset du-a --mu --max-rank 2 \
+        --codebooks etype2 type1 svd_sb --rbg-size 4 --channel-update 2 \
+        --csi-period 5 --pdcch 2 --overhead-re 9 --tag du_mu
 """
 
 from __future__ import annotations
@@ -43,8 +46,8 @@ def main():
     ap.add_argument("--tag", default="p3")
     ap.add_argument("--mu", action="store_true", help="MU-MIMO scheduling")
     ap.add_argument("--max-rank", type=int, default=4, help="CSI rank restriction")
-    ap.add_argument("--mu-max-ues", type=int, default=2)
-    ap.add_argument("--mu-max-layers", type=int, default=4)
+    ap.add_argument("--mu-max-ues", type=int, default=4)
+    ap.add_argument("--mu-max-layers", type=int, default=8)
     ap.add_argument("--rbg-size", type=int, default=16, help="RBG = CSI sub-band [PRB]")
     ap.add_argument("--channel-update", type=int, default=10, help="slots per update")
     ap.add_argument("--csi-period", type=int, default=10, help="slots")
@@ -100,7 +103,7 @@ def main():
     from nrsls.plots import cdf
     fig, ax = plt.subplots(figsize=(6.5, 4.2), facecolor=cdf.SURFACE)
     labels = {"type1": "Type-I codebook", "svd": "SVD (ideal CSI)",
-              "etype2": "eType-II codebook"}
+              "svd_sb": "Sub-band SVD (ideal CSI)", "etype2": "eType-II codebook"}
     cdf.plot_cdfs(ax, {labels.get(k, k): v for k, v in ue_se.items()},
                   "UT spectral efficiency [bit/s/Hz]",
                   title=f"{cfg.name}: full buffer, {'MU' if args.mu else 'SU'}-MIMO, "

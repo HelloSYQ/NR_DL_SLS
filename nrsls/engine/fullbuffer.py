@@ -78,8 +78,8 @@ class FullBufferConfig:
     overhead_re_per_prb: int = 0
     # MU-MIMO (mac/mu_mimo.py): greedy pairing per RBG, ZF on the reports
     mu_mimo: bool = False
-    mu_max_ues: int = 2               # co-scheduled UTs per RBG
-    mu_max_layers: int = 4            # total layers per RBG (<= 4: 1-symbol DM-RS)
+    mu_max_ues: int = 4               # co-scheduled UTs per RBG
+    mu_max_layers: int = 8            # total layers per RBG (DM-RS ports 0-7)
     mu_max_rank: int = 2              # layers per co-scheduled UT
     # > 4 layers on an RBG need DM-RS ports 4-7 (type 1, double symbol).  With
     # a double-symbol front-loaded DM-RS and no additional position (the

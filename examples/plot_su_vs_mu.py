@@ -20,13 +20,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "results")
 LABELS = {"type1": "Type-I", "etype2": "eType-II (combination 6)",
-          "svd": "SVD (ideal CSI)"}
+          "svd": "SVD (ideal CSI)", "svd_sb": "Sub-band SVD (ideal CSI)"}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--su", default=os.path.join(OUT, "p3_full_buffer.json"))
     ap.add_argument("--mu", default=os.path.join(OUT, "p4_mu_full_buffer.json"))
+    ap.add_argument("--out", default=os.path.join(OUT, "p4_su_vs_mu_cdf.png"))
     args = ap.parse_args()
     su, mu = json.load(open(args.su)), json.load(open(args.mu))
 
@@ -61,7 +62,7 @@ def main():
                  f"{mu['config']['mu_max_layers']} layers per RBG)",
                  fontsize=9.5, x=0.01, ha="left", color=cdf.INK)
     fig.tight_layout()
-    path = os.path.join(OUT, "p4_su_vs_mu_cdf.png")
+    path = args.out
     fig.savefig(path, dpi=130, facecolor=cdf.SURFACE)
     print("wrote", os.path.normpath(path))
 
