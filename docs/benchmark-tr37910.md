@@ -11,7 +11,42 @@ The reference is TR 37.910 (3GPP self-evaluation for IMT-2020), Table 5.4.1.2.1-
 
 The ITU-R M.2410 requirement is 7.8 average and 0.225 at the 5th percentile. The M.2412 simulation bandwidth for FDD is 10 MHz + 10 MHz, which is what we compare against. The larger bandwidths in the table show the lower relative overhead of wider carriers.
 
-> **Status:** the 4-drop runs are in progress; the results section follows.
+Reproduce with:
+
+```bash
+DU="--preset du-a --codebooks etype2 type1 svd_sb --rbg-size 4 --channel-update 2 \
+    --csi-period 5 --pdcch 2 --overhead-re 9"
+python examples/run_full_buffer.py $DU --mu --max-rank 2 --tag du_mu
+python examples/run_full_buffer.py $DU --tag du_su
+python examples/plot_su_vs_mu.py --su results/du_su_full_buffer.json \
+    --mu results/du_mu_full_buffer.json --out results/du_su_vs_mu_cdf.png
+```
+
+## Results (FDD 10 MHz)
+
+4 drops × 200 slots (40 warm-up), 2280 UTs per configuration.
+
+| Reports | Mode | Average SE [bit/s/Hz/TRxP] | vs TR 37.910 | 5th percentile [bit/s/Hz] | vs TR 37.910 | UTs / layers per RBG | 1st-tx BLER | MU SINR estimate error |
+|---|---|---|---|---|---|---|---|---|
+| Sub-band SVD (ideal CSI) | MU | **11.02** | 100 % of Type II | **0.411** | 111 % | 3.92 / 7.82 | 0.099 | +0.5 dB |
+| eType-II combination 6 | MU | **8.99** | 81 % of Type II | **0.338** | 91 % | 3.88 / 7.68 | 0.103 | +1.7 dB |
+| Type-I (sub-band i2) | MU | 6.81 | 62 % of Type I | 0.226 | 68 % | 3.39 / 6.39 | 0.133 | +2.9 dB |
+| Sub-band SVD | SU | 5.05 | – | 0.211 | – | 1 / 2.81 | 0.151 | – |
+| eType-II | SU | 4.75 | – | 0.204 | – | 1 / 2.28 | 0.150 | – |
+| Type-I | SU | 4.49 | – | 0.178 | – | 1 / 2.20 | 0.147 | – |
+
+TR 37.910 reference: Type II 11.04 / 0.37 (11 companies), Type I 10.95 / 0.33 (2 companies). ITU-R M.2410 requirement: 7.8 / 0.225.
+
+![Dense Urban SU vs MU](../results/du_su_vs_mu_cdf.png)
+
+### Reading the comparison
+
+- **The chain up to the precoder is in the right range.** With ideal sub-band CSI, the simulated system reproduces the 11-company Type II average (11.02 against 11.04) and exceeds its 5th percentile (0.41 against 0.37). That covers the deployment, channel, overhead level, receiver, link abstraction and MU scheduler together. A geometry, power or overhead error of a few dB, or tens of percent, would show here. The 5th-percentile surplus is expected: ideal CSI serves the cell edge better than any codebook.
+- **With a real codebook we are below the companies:** eType-II reaches 81 % of the average and 91 % of the 5th percentile. The gNB's MU-SINR estimate is 1.7 dB optimistic with eType-II against 0.5 dB with ideal CSI. The quantised reports leave interference between co-scheduled UTs that plain ZF on the reports cannot remove, and the SU-CQI-based estimate does not see it. Typical company implementations add some of what we lack, for example regularised ZF / SLNR precoding, MU-CQI or better MU interference estimation, and smarter pairing. Their exact assumptions are in TR attachments not available here. Our overhead estimate (66 % of REs carry data) may also be heavier than some companies'. Closing this gap is MU-precoder work, not calibration.
+- **Type-I is further off (62 %),** but that reference comes from only 2 companies and sits almost at the Type II level. That is unusual for a single-beam codebook, so it probably reflects those companies' different assumptions. Our Type-I MU follows the expected trend: its coarse PMI leaves the largest MU-SINR estimate error (+2.9 dB) and BLER (13 %).
+- **ITU-R requirements:** eType-II MU (8.99 / 0.338) and ideal CSI meet both. Type-I MU meets the 5th percentile (0.226) but not the average (6.81 < 7.8).
+- **MU over SU in Dense Urban:** +89 % with eType-II, +52 % with Type-I and +118 % with ideal CSI. The 200 m ISD and 10 UTs per TRxP give many well-separated UT pairs.
+- **SU BLER runs at 15 %,** above the 10 % target. The 30 km/h in-car UTs age their SU CSI faster than a 0.5 dB OLLA step can follow in 160 measured slots. MU transmissions, driven by their own OLLA, stay at 10 %.
 
 ## Set-up (`du-a` preset)
 

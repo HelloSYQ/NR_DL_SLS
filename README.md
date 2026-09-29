@@ -21,9 +21,14 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   −5 to 30 dB); see [`docs/lls-regression.md`](docs/lls-regression.md).
 - **MU-MIMO:** greedy per-RBG pairing, zero forcing on the reported
   precoders, MU OLLA, co-scheduled HARQ retransmissions, DM-RS overhead.
-  UMa 32T4R: cell SE 7.24 / 8.11 / 8.27 bit/s/Hz (Type-I / eType-II / SVD),
-  +24–32 % over SU, 5th percentile +16–27 %; see
+  UMa 32T4R: cell SE 7.69 / 9.48 / 9.64 bit/s/Hz (Type-I / eType-II / SVD),
+  +32–55 % over SU, 5th percentile +15–36 %; see
   [`docs/results-p4-mu.md`](docs/results-p4-mu.md).
+- **Benchmark against the 3GPP IMT-2020 self-evaluation** (TR 37.910, Dense
+  Urban-eMBB A, FDD 10 MHz, 32×4 MU-MIMO): with ideal sub-band CSI the
+  simulator gives 11.02 bit/s/Hz/TRxP against the 11-company Type II average
+  of 11.04; eType-II reaches 8.99 (81 %); see
+  [`docs/benchmark-tr37910.md`](docs/benchmark-tr37910.md).
 - **Next:** FTP traffic and load (P4), or further MU work (RZF, MU-CQI).
 
 ## Install
@@ -51,7 +56,7 @@ python examples/plot_large_scale.py
 # phase 3: full-buffer SU-MIMO, Type-I vs eType-II vs SVD
 python examples/run_full_buffer.py --drops 4 --jobs 4
 
-# MU-MIMO (RI <= 2, <= 2 UTs / 4 layers per RBG) and the SU vs MU figure
+# MU-MIMO (RI <= 2, <= 4 UTs / 8 layers per RBG) and the SU vs MU figure
 python examples/run_full_buffer.py --mu --max-rank 2 --tag p4_mu
 python examples/plot_su_vs_mu.py
 
@@ -67,6 +72,7 @@ python -m pytest
 | `system` | UMa, 3.5 GHz, 100 MHz (273 PRB, 30 kHz), 53 dBm, 32T4R |
 | `uma`, `umi`, `rma`, `inh-open`, `inh-mixed` | TR 38.901 §7.2 deployments |
 | `calib-uma`, `calib-umi`, `calib-inh` | TR 38.901 Table 7.8-1-style large-scale calibration at 6 GHz |
+| `du-a` | ITU-R M.2412 Dense Urban-eMBB config A, FDD 10 MHz, 32T4R, 200 m ISD (TR 37.910 benchmark) |
 | `rp-rural-700m`, `rp-rural-4g`, `rp-rural-lmlc`, `rp-mmtc-500m`, `rp-mmtc-1732m`, `rp-urllc-4g`, `rp-urllc-700m`, `rp-inh-12trxp`, `rp-inh-36trxp` | RP-180524 IMT-2020 calibration set-ups (reference data in `refs/rp180524/`) |
 
 Every field of `nrsls.ScenarioConfig` can be overridden:
