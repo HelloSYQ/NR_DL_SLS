@@ -59,7 +59,8 @@ def main():
     fig.suptitle(f"{mu['config']['preset']}: full buffer, "
                  f"{mu['config']['ue_per_cell']} UTs/cell, SU (RI ≤ {su['config'].get('max_rank', 4)}) "
                  f"vs MU (RI ≤ {mu['config']['max_rank']}, ≤ {mu['config']['mu_max_ues']} UTs / "
-                 f"{mu['config']['mu_max_layers']} layers per RBG)",
+                 f"{mu['config']['mu_max_layers']} layers per RBG, "
+                 f"{mu['config'].get('mu_precoder', 'zf').upper()})",
                  fontsize=9.5, x=0.01, ha="left", color=cdf.INK)
     fig.tight_layout()
     path = args.out

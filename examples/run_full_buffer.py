@@ -46,8 +46,9 @@ def main():
     ap.add_argument("--tag", default="p3")
     ap.add_argument("--mu", action="store_true", help="MU-MIMO scheduling")
     ap.add_argument("--max-rank", type=int, default=4, help="CSI rank restriction")
-    ap.add_argument("--mu-max-ues", type=int, default=4)
-    ap.add_argument("--mu-max-layers", type=int, default=8)
+    ap.add_argument("--mu-max-ues", type=int, default=6)
+    ap.add_argument("--mu-max-layers", type=int, default=12)
+    ap.add_argument("--mu-precoder", default="rzf", choices=["rzf", "zf"])
     ap.add_argument("--rbg-size", type=int, default=16, help="RBG = CSI sub-band [PRB]")
     ap.add_argument("--channel-update", type=int, default=10, help="slots per update")
     ap.add_argument("--csi-period", type=int, default=10, help="slots")
@@ -63,6 +64,7 @@ def main():
                               codebook=cb, max_rank=args.max_rank, mu_mimo=args.mu,
                               mu_max_ues=args.mu_max_ues,
                               mu_max_layers=args.mu_max_layers,
+                              mu_precoder=args.mu_precoder,
                               rbg_size=args.rbg_size,
                               channel_update_slots=args.channel_update,
                               csi_period_slots=args.csi_period,
@@ -89,6 +91,7 @@ def main():
             "warmup": args.warmup, "ue_per_cell": args.ue_per_cell,
             "mu_mimo": args.mu, "max_rank": args.max_rank,
             "mu_max_ues": args.mu_max_ues, "mu_max_layers": args.mu_max_layers,
+            "mu_precoder": args.mu_precoder,
             "rbg_size": args.rbg_size, "channel_update_slots": args.channel_update,
             "csi_period_slots": args.csi_period, "pdcch_symbols": args.pdcch,
             "overhead_re_per_prb": args.overhead_re}
