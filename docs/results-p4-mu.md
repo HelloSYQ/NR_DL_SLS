@@ -5,36 +5,43 @@ This is the first P5 extension of the [module plan](module-plan.md): multi-user 
 Reproduce with:
 
 ```bash
-python examples/run_full_buffer.py --mu --max-rank 2 --tag p4_mu   # MU, <= 4 UTs / 8 layers
+python examples/run_full_buffer.py --mu --max-rank 2 --tag p4_mu   # MU, RZF, <= 6 UTs / 12 layers
 python examples/run_full_buffer.py --tag p3                        # SU reference
 python examples/plot_su_vs_mu.py
 ```
 
-The same MU pipeline is benchmarked against the TR 37.910 Dense Urban self-evaluation in [benchmark-tr37910.md](benchmark-tr37910.md). There, with ideal sub-band CSI, it reproduces the 3GPP companies' average of 11.04 bit/s/Hz/TRxP.
+The same MU pipeline is benchmarked against the TR 37.910 Dense Urban self-evaluation in [benchmark-tr37910.md](benchmark-tr37910.md).
 
 ## Results
 
-4 drops × 200 slots (40 warm-up), 2280 UTs per configuration, same drops and seeds for SU and MU. SU is the phase-3 run (RI ≤ 4, re-run with per-UT samples saved: bit-identical). MU uses RI ≤ 2, ≤ 4 UTs and ≤ 8 layers per RBG.
+4 drops × 200 slots (40 warm-up), 2280 UTs per configuration, same drops and seeds for SU and MU. SU is the phase-3 run (RI ≤ 4, re-run with per-UT samples saved: bit-identical). MU uses the defaults: RI ≤ 2, regularised ZF on the reports, ≤ 6 UTs and ≤ 12 layers per RBG.
 
 | Reports | Mode | Cell SE [bit/s/Hz] | 5 %-ile UT SE | Median UT SE | 1st-tx BLER | Mean MCS | UTs / layers per RBG | MU SINR estimate − actual |
 |---|---|---|---|---|---|---|---|---|
 | Type-I (sub-band i2) | SU | 5.83 | 0.192 | 0.508 | 0.117 | 15.1 | 1 / 2.18 | – |
-| | MU | **7.69 (+32 %)** | **0.220 (+15 %)** | 0.595 (+17 %) | 0.125 | 7.2 | 3.32 / 6.11 | +2.5 dB |
+| | MU | **8.20 (+41 %)** | **0.225 (+17 %)** | 0.613 (+21 %) | 0.123 | 5.7 | 4.45 / 8.14 | +2.4 dB |
 | eType-II (combination 6) | SU | 6.13 | 0.213 | 0.531 | 0.116 | 15.6 | 1 / 2.18 | – |
-| | MU | **9.48 (+55 %)** | **0.288 (+36 %)** | 0.755 (+42 %) | 0.097 | 7.2 | 3.76 / 7.18 | +1.6 dB |
+| | MU | **9.83 (+60 %)** | **0.288 (+36 %)** | 0.756 (+42 %) | 0.098 | 5.4 | 5.19 / 9.95 | +1.6 dB |
 | SVD (ideal, wideband) | SU | 6.27 | 0.209 | 0.542 | 0.115 | 14.5 | 1 / 2.44 | – |
-| | MU | **9.64 (+54 %)** | **0.269 (+29 %)** | 0.747 (+38 %) | 0.100 | 7.5 | 3.67 / 7.00 | +1.5 dB |
+| | MU | **9.88 (+58 %)** | **0.269 (+29 %)** | 0.729 (+35 %) | 0.102 | 5.8 | 4.90 / 9.32 | +1.6 dB |
 
-An earlier version limited MU to ≤ 2 UTs / 4 layers, because it charged 4 DM-RS symbols above 4 layers (see below). It gave 7.24 / 8.11 / 8.27 cell SE.
+Earlier configurations:
+
+| MU configuration | Type-I | eType-II | SVD |
+|---|---|---|---|
+| ZF, ≤ 2 UTs / 4 layers (4-symbol DM-RS charged above 4 layers, see below) | 7.24 | 8.11 | 8.27 |
+| ZF, ≤ 4 UTs / 8 layers | 7.69 | 9.48 | 9.64 |
+| RZF, ≤ 6 UTs / 12 layers (default) | 8.20 | 9.83 | 9.88 |
 
 ![SU vs MU](../results/p4_su_vs_mu_cdf.png)
 
 ### Observations
 
-- **MU-MIMO gains 32–55 % in cell SE and 15–36 % at the cell edge** over SU with the same reports, at 3.3–3.8 co-scheduled UTs and 6–7 layers per RBG. Per-layer SINR drops (mean MCS 15 → 7), but three to four times the layers share each RBG.
-- **eType-II's advantage over Type-I grows in MU**, as expected: +23 % cell SE and +31 % at the 5th percentile in MU, against +5 % / +11 % in SU. eType-II reaches 98 % of the *wideband* unquantised-SVD MU cell SE and beats it at the edge, because its per-sub-band precoder follows the frequency selectivity. The per-sub-band ideal-CSI bound (`svd_sb`), evaluated in Dense Urban, is 23 % above eType-II.
-- **Type-I pairs less and worse.** Its coarse single-beam PMI hides the leakage between co-scheduled UTs: the gNB's MU-SINR estimate is 2.5 dB optimistic, against 1.5–1.6 dB for eType-II / SVD, and OLLA runs a higher BLER (12.5 %).
-- **Link adaptation holds the target**, at 10–12.5 % first-transmission BLER with the separate MU OLLA.
+- **MU-MIMO gains 41–60 % in cell SE and 17–36 % at the cell edge** over SU with the same reports, at 4.5–5.2 co-scheduled UTs and 8–10 layers per RBG. Per-layer SINR drops (mean MCS 15 → 5–6), but four to five times the layers share each RBG.
+- **eType-II's advantage over Type-I grows in MU**, as expected: +20 % cell SE and +28 % at the 5th percentile in MU, against +5 % / +11 % in SU. eType-II matches the *wideband* unquantised-SVD MU cell SE (99.5 %) and beats it at the edge, because its per-sub-band precoder follows the frequency selectivity. The per-sub-band ideal-CSI bound (`svd_sb`), evaluated in Dense Urban, is 28 % above eType-II.
+- **Type-I pairs less and worse.** Its coarse single-beam PMI hides the leakage between co-scheduled UTs: the gNB's MU-SINR estimate is 2.4 dB optimistic, against 1.6 dB for eType-II / SVD, and OLLA runs a higher BLER (12.3 %).
+- **Link adaptation holds the target**, at 10–12 % first-transmission BLER with the separate MU OLLA.
+- **The same MU pipeline is benchmarked** against the TR 37.910 Dense Urban self-evaluation in [benchmark-tr37910.md](benchmark-tr37910.md). There the 3GPP Type II average lies between our eType-II result and our ideal-CSI bound.
 
 ## Simplifications (to revisit)
 

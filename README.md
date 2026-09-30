@@ -19,10 +19,10 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
 - **LLS ↔ SLS regression:** one SLS link on the `nrdlsim` CDL channel
   reproduces the LLS `run_point` within 2 % SE (CDL-A/C/D, 4T2R to 32T4R,
   −5 to 30 dB); see [`docs/lls-regression.md`](docs/lls-regression.md).
-- **MU-MIMO:** greedy per-RBG pairing, zero forcing on the reported
-  precoders, MU OLLA, co-scheduled HARQ retransmissions, DM-RS overhead.
-  UMa 32T4R: cell SE 7.69 / 9.48 / 9.64 bit/s/Hz (Type-I / eType-II / SVD),
-  +32–55 % over SU, 5th percentile +15–36 %; see
+- **MU-MIMO:** greedy per-RBG pairing (≤ 6 UTs / 12 layers), regularised
+  ZF on the reported precoders, MU OLLA, co-scheduled HARQ retransmissions.
+  UMa 32T4R: cell SE 8.20 / 9.83 / 9.88 bit/s/Hz (Type-I / eType-II / SVD),
+  +41–60 % over SU, 5th percentile +17–36 %; see
   [`docs/results-p4-mu.md`](docs/results-p4-mu.md).
 - **Benchmark against the 3GPP IMT-2020 self-evaluation** (TR 37.910, Dense
   Urban-eMBB A, FDD 10 MHz, 32×4 MU-MIMO): the 11-company Type II average of
@@ -57,7 +57,7 @@ python examples/plot_large_scale.py
 # phase 3: full-buffer SU-MIMO, Type-I vs eType-II vs SVD
 python examples/run_full_buffer.py --drops 4 --jobs 4
 
-# MU-MIMO (RI <= 2, <= 4 UTs / 8 layers per RBG) and the SU vs MU figure
+# MU-MIMO (RI <= 2, RZF, <= 6 UTs / 12 layers per RBG) and the SU vs MU figure
 python examples/run_full_buffer.py --mu --max-rank 2 --tag p4_mu
 python examples/plot_su_vs_mu.py
 
