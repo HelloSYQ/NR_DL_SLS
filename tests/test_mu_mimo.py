@@ -86,3 +86,19 @@ def test_mu_mimo_co_schedules_and_is_reproducible(small):
     assert a.mean_ues_per_rbg > 1.2 and a.mu_tb_fraction > 0.2
     assert a.mean_layers_per_rbg <= 8 and a.cell_se > 0
     assert 0 <= a.bler_first <= 0.5
+
+
+def test_rzf_between_zf_and_matched_filter():
+    from nrsls.mac.mu_mimo import mu_precode
+    rng = np.random.default_rng(2)
+    v = unit_columns(_rand(rng, 32, 6))
+    w_zf, s_zf = mu_precode(v, np.full(6, 1e6), "zf")
+    w_hi, s_hi = mu_precode(v, np.full(6, 1e6), "rzf")
+    assert np.allclose(np.abs(np.sum(np.conj(w_hi) * w_zf, axis=0)), 1, atol=1e-3)
+    assert np.allclose(s_hi, s_zf, rtol=0.05)                  # high SNR: ZF
+    w_lo, _ = mu_precode(v, np.full(6, 1e-4), "rzf")
+    assert np.allclose(np.abs(np.sum(np.conj(w_lo) * v, axis=0)), 1, atol=1e-3)
+    # at moderate SNR RZF's modelled sum rate is at least ZF's
+    s = np.full(6, 3.0)
+    assert np.sum(np.log2(1 + mu_precode(v, s, "rzf")[1])) >= \
+        np.sum(np.log2(1 + mu_precode(v, s, "zf")[1])) - 1e-9

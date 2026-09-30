@@ -87,6 +87,7 @@ class FullBufferConfig:
     # single-symbol + 1 additional DM-RS of <= 4 layers, so no extra overhead
     # by default; True charges double-symbol + 1 additional pair (48 REs)
     mu_dmrs_overhead: bool = False
+    mu_precoder: str = "zf"           # 'zf' or 'rzf' on the reports
 
 
 @dataclass
@@ -181,7 +182,8 @@ def _mu_schedule_cell(c, cand, free, forced, current, pf_avg, la, la_mu, fb,
                     for u in v}
             group, w, est, uid = greedy_pairing(
                 start, pool, v, s_lin, rank, pf, fb.mu_max_ues, fb.mu_max_layers, s_mu,
-                dd_factor=n_re_dd / n_re if fb.mu_dmrs_overhead else 1.0)
+                dd_factor=n_re_dd / n_re if fb.mu_dmrs_overhead else 1.0,
+                method=fb.mu_precoder)
             if len(group) == 1:
                 w = v[group[0]]
         stats["ues"].append(len(group))

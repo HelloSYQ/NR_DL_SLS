@@ -6,8 +6,9 @@ s_u the UT expects when it is served alone with r_u layers at full power.
 For a co-scheduled set G on one RBG with L = sum_{u in G} r_u layers:
 
   * precoder: zero forcing on the stacked reported vectors V = [V_u ...],
-    W = V (V^H V + delta I)^-1 with unit-norm columns, each layer at power
-    1/L (total transmit power fixed);
+    W = V (V^H V + delta I)^-1, or regularised ZF on the SINR-scaled
+    reports (``mu_precode``), unit-norm columns, each layer at power 1/L
+    (total transmit power fixed);
   * MU SINR estimate of layer l of UT u: s_u * (r_u / L) * rho_l, where
     rho_l = |v_l^H w_l|^2 is the ZF projection loss (1 for orthogonal
     reports) and r_u / L the power split relative to SU;
@@ -44,21 +45,50 @@ def zf(v: np.ndarray, delta: float = ZF_DELTA):
     return w, rho
 
 
-def _set_metric(rho, s_lin, r, n_layers, pf, dd_layers=8, dd_factor=1.0):
+def mu_precode(v: np.ndarray, s_full: np.ndarray, method: str = "zf"):
+    """MU precoder and per-layer SINR estimates from the reports.
+
+    ``v`` (..., S, L) unit-column reported precoders, ``s_full`` (..., L) the
+    per-layer SNR a layer would get at full power (SU CQI SINR x its UT's
+    rank).  The gNB's channel model of layer l is g_l = sqrt(s_full_l) v_l
+    with unit noise; every layer gets power 1/L.
+
+      * 'zf':  W = V (V^H V + delta I)^-1, SINR_l = s_full_l rho_l / L;
+      * 'rzf': regularised ZF (MMSE precoder) W = G^H (G G^H + L I)^-1,
+        which tends to ZF at high SNR and to matched filtering at low SNR;
+        SINR_l = (|g_l^H w_l|^2 / L) / (1 + sum_{j != l} |g_l^H w_j|^2 / L).
+
+    Returns (W (..., S, L) unit columns, SINR (..., L))."""
+    n_l = v.shape[-1]
+    if method == "zf":
+        w, rho = zf(v)
+        return w, s_full * rho / n_l
+    if method != "rzf":
+        raise ValueError(f"unknown MU precoder {method!r}")
+    gh = v * np.sqrt(s_full)[..., None, :]                   # G^H (..., S, L)
+    g = np.conj(np.swapaxes(gh, -1, -2))                     # G   (..., L, S)
+    w = unit_columns(gh @ np.linalg.inv(g @ gh + n_l * np.eye(n_l)))
+    p = np.abs(g @ w) ** 2 / n_l                             # |g_l^H w_j|^2 / L
+    sig = np.diagonal(p, axis1=-2, axis2=-1)
+    return w, sig / (1 + p.sum(axis=-1) - sig)
+
+
+def _metric(sinr, pf, n_layers, dd_layers=8, dd_factor=1.0):
     """PF metric of sets, per-layer arrays (..., L) -> (...,)."""
-    m = np.sum(np.log2(1 + s_lin * r / n_layers * rho) / pf, axis=-1)
+    m = np.sum(np.log2(1 + sinr) / pf, axis=-1)
     return m * (dd_factor if n_layers > dd_layers else 1.0)
 
 
 def greedy_pairing(owner, pool, v: dict, s_lin: dict, rank: dict,
                    pf: dict, max_ues: int, max_layers: int, s_mu: dict | None = None,
-                   dd_layers: int = 4, dd_factor: float = 1.0):
+                   dd_layers: int = 4, dd_factor: float = 1.0, method: str = "zf"):
     """Co-scheduled set of one RBG.
 
     ``owner``: the UT (or list of UTs, e.g. retransmissions) that opens the
     set.  ``v[u]`` (S, r_u) unit columns, ``s_lin[u]`` SU per-layer SINR,
     ``s_mu[u]`` the one used in MU sets (default ``s_lin``), ``rank``, ``pf``
-    (average rate) per UT.  Returns (UTs in layer order, W (S, L) unit
+    (average rate) per UT, ``method`` the MU precoder ('zf' or 'rzf', see
+    :func:`mu_precode`).  Returns (UTs in layer order, W (S, L) unit
     columns, per-layer MU SINR estimates (L,), UT of every layer (L,))."""
     s_mu = s_lin if s_mu is None else s_mu
     group = list(owner) if isinstance(owner, (list, tuple)) else [owner]
@@ -72,10 +102,10 @@ def greedy_pairing(owner, pool, v: dict, s_lin: dict, rank: dict,
 
     uid, s, r, p = layers(group)
     if len(group) == 1:
-        w, rho = v[group[0]], np.ones(len(uid))
+        w, sinr = v[group[0]], s
     else:
-        w, rho = zf(np.concatenate([v[u] for u in group], axis=1))
-    best = _set_metric(rho, s, r, len(uid), p, dd_layers, dd_factor)
+        w, sinr = mu_precode(np.concatenate([v[u] for u in group], axis=1), s * r, method)
+    best = _metric(sinr, p, len(uid), dd_layers, dd_factor)
     s_g = np.array([s_mu[u] for u in uid])        # the group's SINRs once paired
     while len(group) < max_ues:
         n_l = len(uid)
@@ -87,7 +117,6 @@ def greedy_pairing(owner, pool, v: dict, s_lin: dict, rank: dict,
         for rc in sorted({rank[u] for u in cands}):          # batch per rank
             cu = [u for u in cands if rank[u] == rc]
             vb = np.stack([np.concatenate([v_g, v[u]], axis=1) for u in cu])
-            wb, rhob = zf(vb)
             n_new = n_l + rc
             s_b = np.concatenate([np.broadcast_to(s_g, (len(cu), n_l)),
                                   np.repeat([[s_mu[u]] for u in cu], rc, axis=1)], 1)
@@ -95,15 +124,15 @@ def greedy_pairing(owner, pool, v: dict, s_lin: dict, rank: dict,
                                   np.full((len(cu), rc), float(rc))], 1)
             p_b = np.concatenate([np.broadcast_to(p, (len(cu), n_l)),
                                   np.repeat([[pf[u]] for u in cu], rc, axis=1)], 1)
-            m = _set_metric(rhob, s_b, r_b, n_new, p_b, dd_layers, dd_factor)
+            wb, sb = mu_precode(vb, s_b * r_b, method)
+            m = _metric(sb, p_b, n_new, dd_layers, dd_factor)
             i = int(np.argmax(m))
             if top is None or m[i] > top[0]:
-                top = (m[i], cu[i], wb[i], rhob[i])
+                top = (m[i], cu[i], wb[i], sb[i])
         if top[0] <= best:
             break
-        best, u_new, w, rho = top
+        best, u_new, w, sinr = top
         group.append(u_new)
         uid, s, r, p = layers(group)
         s_g = s
-    n_l = len(uid)
-    return group, w, s * r / n_l * rho, uid
+    return group, w, sinr, uid
