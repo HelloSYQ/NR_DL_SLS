@@ -25,9 +25,10 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   +32–55 % over SU, 5th percentile +15–36 %; see
   [`docs/results-p4-mu.md`](docs/results-p4-mu.md).
 - **Benchmark against the 3GPP IMT-2020 self-evaluation** (TR 37.910, Dense
-  Urban-eMBB A, FDD 10 MHz, 32×4 MU-MIMO): with ideal sub-band CSI the
-  simulator gives 11.02 bit/s/Hz/TRxP against the 11-company Type II average
-  of 11.04; eType-II reaches 8.99 (81 %); see
+  Urban-eMBB A, FDD 10 MHz, 32×4 MU-MIMO): the 11-company Type II average of
+  11.04 bit/s/Hz/TRxP (0.37 at the 5th percentile) lies between the
+  simulator's eType-II result, 9.82 / 0.362, and its ideal-CSI bound,
+  12.55 / 0.438; see
   [`docs/benchmark-tr37910.md`](docs/benchmark-tr37910.md).
 - **Next:** FTP traffic and load (P4), or further MU work (RZF, MU-CQI).
 

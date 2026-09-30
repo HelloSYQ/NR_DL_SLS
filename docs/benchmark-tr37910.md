@@ -24,29 +24,31 @@ python examples/plot_su_vs_mu.py --su results/du_su_full_buffer.json \
 
 ## Results (FDD 10 MHz)
 
-4 drops × 200 slots (40 warm-up), 2280 UTs per configuration.
+4 drops × 200 slots (40 warm-up), 2280 UTs per configuration. MU uses the defaults: RZF on the reports, ≤ 6 UTs / ≤ 12 layers per RBG, RI ≤ 2.
 
 | Reports | Mode | Average SE [bit/s/Hz/TRxP] | vs TR 37.910 | 5th percentile [bit/s/Hz] | vs TR 37.910 | UTs / layers per RBG | 1st-tx BLER | MU SINR estimate error |
 |---|---|---|---|---|---|---|---|---|
-| Sub-band SVD (ideal CSI) | MU | **11.02** | 100 % of Type II | **0.411** | 111 % | 3.92 / 7.82 | 0.099 | +0.5 dB |
-| eType-II combination 6 | MU | **8.99** | 81 % of Type II | **0.338** | 91 % | 3.88 / 7.68 | 0.103 | +1.7 dB |
-| Type-I (sub-band i2) | MU | 6.81 | 62 % of Type I | 0.226 | 68 % | 3.39 / 6.39 | 0.133 | +2.9 dB |
+| Sub-band SVD (ideal CSI) | MU | 12.55 | 114 % of Type II | 0.438 | 118 % | 5.74 / 11.44 | 0.094 | +0.2 dB |
+| **eType-II combination 6** | MU | **9.82** | **89 % of Type II** | **0.362** | **98 %** | 5.64 / 11.17 | 0.099 | +1.6 dB |
+| Type-I (sub-band i2) | MU | 7.59 | 69 % of Type I | 0.241 | 73 % | 4.88 / 9.14 | 0.123 | +2.6 dB |
 | Sub-band SVD | SU | 5.05 | – | 0.211 | – | 1 / 2.81 | 0.151 | – |
 | eType-II | SU | 4.75 | – | 0.204 | – | 1 / 2.28 | 0.150 | – |
 | Type-I | SU | 4.49 | – | 0.178 | – | 1 / 2.20 | 0.147 | – |
 
 TR 37.910 reference: Type II 11.04 / 0.37 (11 companies), Type I 10.95 / 0.33 (2 companies). ITU-R M.2410 requirement: 7.8 / 0.225.
 
+The previous MU configuration (ZF, ≤ 4 UTs / 8 layers) gave 11.02 / 0.411 (ideal CSI), 8.99 / 0.338 (eType-II) and 6.81 / 0.226 (Type-I). A one-drop sensitivity with eType-II parameter combination 8 (L = 6, allowed for RI ≤ 2) gave +3 % over combination 6.
+
 ![Dense Urban SU vs MU](../results/du_su_vs_mu_cdf.png)
 
 ### Reading the comparison
 
-- **The chain up to the precoder is in the right range.** With ideal sub-band CSI, the simulated system reproduces the 11-company Type II average (11.02 against 11.04) and exceeds its 5th percentile (0.41 against 0.37). That covers the deployment, channel, overhead level, receiver, link abstraction and MU scheduler together. A geometry, power or overhead error of a few dB, or tens of percent, would show here. The 5th-percentile surplus is expected: ideal CSI serves the cell edge better than any codebook.
-- **With a real codebook we are below the companies:** eType-II reaches 81 % of the average and 91 % of the 5th percentile. The gNB's MU-SINR estimate is 1.7 dB optimistic with eType-II against 0.5 dB with ideal CSI. The quantised reports leave interference between co-scheduled UTs that plain ZF on the reports cannot remove, and the SU-CQI-based estimate does not see it. Typical company implementations add some of what we lack, for example regularised ZF / SLNR precoding, MU-CQI or better MU interference estimation, and smarter pairing. Their exact assumptions are in TR attachments not available here. Our overhead estimate (66 % of REs carry data) may also be heavier than some companies'. Closing this gap is MU-precoder work, not calibration.
-- **Type-I is further off (62 %),** but that reference comes from only 2 companies and sits almost at the Type II level. That is unusual for a single-beam codebook, so it probably reflects those companies' different assumptions. Our Type-I MU follows the expected trend: its coarse PMI leaves the largest MU-SINR estimate error (+2.9 dB) and BLER (13 %).
-- **ITU-R requirements:** eType-II MU (8.99 / 0.338) and ideal CSI meet both. Type-I MU meets the 5th percentile (0.226) but not the average (6.81 < 7.8).
-- **MU over SU in Dense Urban:** +89 % with eType-II, +52 % with Type-I and +118 % with ideal CSI. The 200 m ISD and 10 UTs per TRxP give many well-separated UT pairs.
-- **SU BLER runs at 15 %,** above the 10 % target. The 30 km/h in-car UTs age their SU CSI faster than a 0.5 dB OLLA step can follow in 160 measured slots. MU transmissions, driven by their own OLLA, stay at 10 %.
+- **The 3GPP Type II average sits between our quantised and our ideal CSI.** eType-II gets 9.82 (89 %) and ideal sub-band CSI gets 12.55 (114 %) around the reference 11.04. At the 5th percentile eType-II is within 2 % (0.362 against 0.37). The whole chain — deployment, channel, overhead level, receiver, link abstraction and MU scheduler — puts the system in the range the companies report. An error of a few dB in geometry, power or overhead would move both of our bounds by tens of percent.
+- **The remaining 11 % for eType-II is PMI quantisation plus unknown company assumptions.** eType-II stays at about 78 % of ideal CSI in every MU configuration tried (ZF or RZF, 8 or 12 layers). The gNB's MU-SINR estimate is 1.6 dB optimistic with it, against 0.2 dB with ideal CSI, because quantised reports leave leakage between co-scheduled UTs that the SU-CQI-based estimate cannot see. The companies' Type II result corresponds to 88 % of our ideal-CSI bound. The difference is within what their undisclosed assumptions could cover: maximum layers, precoder, overheads (ours: 66 % of REs carry data) and channel estimation. Those assumptions are in TR attachments not available here.
+- **Type-I at 69 %:** that reference comes from only 2 companies and sits almost at the Type II level. That is unusual for a single-beam codebook, so it probably reflects those companies' different assumptions. Our Type-I MU follows the expected trend: its coarse PMI leaves the largest MU-SINR estimate error (+2.6 dB) and BLER (12 %).
+- **ITU-R requirements:** eType-II and ideal-CSI MU meet both. Type-I MU meets the 5th percentile (0.241) but not the average (7.59 < 7.8).
+- **MU over SU in Dense Urban:** +107 % with eType-II, +69 % with Type-I and +148 % with ideal CSI, at 5–6 co-scheduled UTs and 9–11 layers per RBG. The 200 m ISD and 10 UTs per TRxP give many well-separated UT sets.
+- **SU BLER runs at 15 %,** above the 10 % target. The 30 km/h in-car UTs age their SU CSI faster than a 0.5 dB OLLA step can follow in 160 measured slots. MU transmissions, driven by their own OLLA, stay at 9–12 %.
 
 ## Set-up (`du-a` preset)
 
@@ -62,7 +64,7 @@ TR 37.910 reference: Type II 11.04 / 0.37 (11 companies), Type I 10.95 / 0.33 (2
 | SE normalisation | throughput / 10 MHz channel bandwidth (52 PRB occupy 9.36 MHz) | M.2410 |
 | Overhead | PDCCH 2 symbols; DM-RS 24 REs/PRB (2 symbols, also for ports 0–7 with a double-symbol front-loaded DM-RS); CSI-RS 32 ports + CSI-IM every 5 ms, TRS, SSB ≈ 9 REs/PRB/slot → 111 data REs per PRB and slot (66 % of the REs) | our estimate (the companies' overhead assumptions are in TR attachments not available here) |
 | CSI | period 5 ms, delay 4 ms, 4-PRB sub-bands (N3 = 13), RI ≤ 2 | |
-| MU-MIMO | greedy PF pairing per 4-PRB RBG, ≤ 4 UTs / ≤ 8 layers, zero forcing on the reports, MU OLLA ([results-p4-mu.md](results-p4-mu.md)) | |
+| MU-MIMO | greedy PF pairing per 4-PRB RBG, ≤ 6 UTs / ≤ 12 layers, regularised ZF on the reports, MU OLLA ([results-p4-mu.md](results-p4-mu.md)) | |
 | Channel | updated every 2 slots (2 ms: 0.22 λ at 30 km/h, 0.02 λ at 3 km/h) | simplification |
 
 ## Decomposition runs (one drop, 100 slots)
@@ -81,6 +83,7 @@ These runs located the gap between the first result and the reference. Everythin
 | **eType-II, ≤ 4 UTs, 2-symbol DM-RS** | **8.90** | **0.334** | 3.9 / 7.7 | +1.8 dB |
 | Type-I, ≤ 4 UTs, 2-symbol DM-RS | 6.86 | 0.238 | 3.5 / 6.6 | +2.7 dB |
 
-- **DM-RS was the largest single error.** Charging 4 DM-RS symbols for more than 4 layers cost 18 % of the data REs of every large MU set, and it made the pairing stop at 2–3 UTs. The low-mobility configuration for ports 0–7, a double-symbol front-loaded DM-RS without an additional position, costs the same 24 REs as the ≤ 4-layer DM-RS. Correcting this moved the ideal-CSI run from 7.5 to 11.0, and MU now defaults to ≤ 4 UTs / 8 layers.
+- **DM-RS was the largest single error.** Charging 4 DM-RS symbols for more than 4 layers cost 18 % of the data REs of every large MU set, and it made the pairing stop at 2–3 UTs. The low-mobility configuration for ports 0–7, a double-symbol front-loaded DM-RS without an additional position, costs the same 24 REs as the ≤ 4-layer DM-RS. Correcting this moved the ideal-CSI run from 7.5 to 11.0.
+- **Then RZF and up to 12 layers** (type-2 double-symbol DM-RS, also 24 REs/PRB) took eType-II from 8.90 to 9.68, Type-I from 6.86 to 7.58 and ideal CSI from 10.96 to 12.45 (one drop). Most of that gain comes from the larger sets; RZF alone adds 1–5 %, mostly at the cell edge. These are the MU defaults now.
 - **CSI ageing, 30 km/h UTs and the O2I model are second-order here** (3–5 % each).
 - **With ideal sub-band CSI the MU pipeline reproduces the reference**: 10.96 against 11.04 average, and 0.41 against 0.37 at the 5th percentile.

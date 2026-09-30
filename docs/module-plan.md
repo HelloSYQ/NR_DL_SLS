@@ -4,8 +4,9 @@ Status: **P1, P2 and P3 implemented** (see [calibration-p1.md](calibration-p1.md
 [calibration-p2.md](calibration-p2.md), [results-p3.md](results-p3.md) and
 [lls-regression.md](lls-regression.md): the LLS ↔ SLS regression passes).
 The P3 industry-results criterion is checked in [benchmark-tr37910.md](benchmark-tr37910.md):
-Dense Urban-eMBB A, 32×4 MU-MIMO, with ideal sub-band CSI 11.02 against the
-TR 37.910 11-company average of 11.04 bit/s/Hz/TRxP; eType-II at 81 %. P2 matches the RP-180524 /
+Dense Urban-eMBB A, 32×4 MU-MIMO. The TR 37.910 11-company Type II average
+of 11.04 bit/s/Hz/TRxP lies between our eType-II result (9.82, 89 %; 98 % of
+the 5th percentile) and our ideal sub-band CSI bound (12.55). P2 matches the RP-180524 /
 TR 37.910 3GPP calibration data in all 9 configurations it covers. Decisions from §8 are confirmed: UMa 3.5 GHz / 100 MHz / 32T4R
 first, Type-I + eType-II CSI, `nrdlsim` as a pinned git dependency, K = 8
 explicit interferers.
