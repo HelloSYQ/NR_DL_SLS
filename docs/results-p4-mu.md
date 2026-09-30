@@ -39,7 +39,7 @@ An earlier version limited MU to ≤ 2 UTs / 4 layers, because it charged 4 DM-R
 ## Simplifications (to revisit)
 
 - **SU CSI only.** There is no MU-CQI and no rank adaptation for MU: RI is restricted to ≤ 2 for all UTs. A UT reporting rank > 2 would only be scheduled alone (not exercised with RI ≤ 2).
-- **ZF on the reports**, without regularisation by the SINR (RZF / SLNR) and without per-layer power allocation.
+- **Linear precoding on the reports only.** RZF (or ZF) on the reported vectors with equal power per layer; no SLNR, no per-layer power allocation, and no model of the CSI error (the MU OLLA learns it).
 - **Greedy pairing is myopic** (see above); no user grouping or angular pre-selection.
 - **Ideal DM-RS channel estimation** of the co-scheduled layers at the UT.
 - **No overhead beyond 2 DM-RS symbols and 1 PDCCH symbol** in this UMa run, as in phase 3. The Dense Urban benchmark includes PDCCH, CSI-RS, SSB and TRS overhead.
@@ -50,14 +50,14 @@ The gNB knows only what the UTs report: the SU CSI (RI, PMI, sub-band CQI) of TS
 
 | Item | Model |
 |---|---|
-| Co-scheduling | Per RBG, greedy. The PF owner of the RBG (or its HARQ retransmission) opens the set. UTs are added while the PF metric Σ log2(1 + SINR) / R̄ of the set grows. Limits: ≤ 4 UTs, ≤ 8 layers per RBG (default) and rank ≤ 2 per co-scheduled UT. |
+| Co-scheduling | Per RBG, greedy. The PF owner of the RBG (or its HARQ retransmission) opens the set. UTs are added while the PF metric Σ log2(1 + SINR) / R̄ of the set grows. Limits: ≤ 6 UTs, ≤ 12 layers per RBG (default) and rank ≤ 2 per co-scheduled UT. |
 | CSI | RI restricted to ≤ 2 (`--max-rank 2`) so that every UT can be paired. Type-I (sub-band i2), Rel-16 eType-II combination 6, or SVD (unquantised wideband eigenvectors, the ideal-CSI reference). |
-| Precoder | Zero forcing on the stacked reported precoders: W = V (VᴴV + δI)⁻¹ with unit-norm columns, δ = 10⁻³. Each layer gets power 1/L, so the total transmit power is fixed. A UT alone on an RBG keeps its reported precoder at full power. |
-| gNB MU-SINR estimate | SU CQI SINR × power split (r_u / L) × ZF projection loss ρ = \|vᴴw\|². This gives the pairing metric and the MCS. |
+| Precoder | Regularised ZF (MMSE precoder, default) on the gNB's model of each reported layer, g_l = √(s_l r_l) v_l: W = Gᴴ(GGᴴ + L·I)⁻¹. Here s_l is the SU CQI SINR per layer and r_l the UT's rank, in units of the noise-plus-inter-cell interference. This tends to ZF at high SINR and to matched filtering at the cell edge. `mu_precoder='zf'` gives W = V(VᴴV + δI)⁻¹ with δ = 10⁻³. Columns have unit norm, and each layer gets power 1/L, so the total transmit power is fixed. A UT alone on an RBG keeps its reported precoder at full power. |
+| gNB MU-SINR estimate | From the same model: SINR_l = (\|g_lᴴw_l\|²/L) / (1 + Σ_{j≠l} \|g_lᴴw_j\|²/L). For ZF this is SU CQI SINR × power split (r_u / L) × projection loss ρ = \|vᴴw\|². This gives the pairing metric and the MCS. |
 | MU link adaptation | A separate OLLA per UT for MU transmissions (0.5 dB, 10 % BLER target). The MU back-off relative to the SU one also scales the SINRs in the pairing metric, so UTs whose MU transmissions fail get paired less. |
 | UT receiver | MMSE over all layers of the serving cell. The co-scheduled layers are known interference (their effective channels come from DM-RS), and the inter-cell interference is whitened as in SU. |
 | HARQ | A retransmission joins the co-scheduled sets of its RBGs as a forced member. Its precoder is recomputed for the new set, and chase combining adds the SINRs. It keeps its TB, rank and MCS. |
-| DM-RS | 24 REs per PRB for any layer count. Up to 4 layers use type-1 single-symbol DM-RS plus 1 additional position. Ports 4–7 use a double-symbol front-loaded DM-RS without an additional position, the low-mobility configuration, which costs the same. `mu_dmrs_overhead=True` instead charges double-symbol + 1 additional pair (48 REs) above 4 layers, and the pairing metric then pays that cost. |
+| DM-RS | 24 REs per PRB for any layer count. Up to 4 layers use type-1 single-symbol DM-RS plus 1 additional position. Up to 8 layers use type-1 double-symbol front-loaded DM-RS without an additional position (the low-mobility configuration), and up to 12 layers use type-2 double-symbol DM-RS. Both cost the same. `mu_dmrs_overhead=True` instead charges double-symbol + 1 additional pair (48 REs) above 4 layers, and the pairing metric then pays that cost. |
 | Inter-cell interference | The explicit interferers transmit their actual MU precoders (all co-scheduled layers). |
 
 Checks (`tests/test_mu_mimo.py`):
