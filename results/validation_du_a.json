@@ -1,0 +1,95 @@
+{
+ "reference": {
+  "source": "3GPP TR 37.910 Table 5.4.1.2.1-1(a): NR FDD, Dense Urban-eMBB config A, 32x4 MU-MIMO, Type II, (8,8,2,1,1;2,8), 15 kHz, channel model A, 10 MHz (11 companies)",
+  "avg_se": 11.04,
+  "p5_se": 0.37
+ },
+ "results": {
+  "etype2": {
+   "cell_se": 9.766439912280703,
+   "ue_se_p5": 0.35816575,
+   "ue_se_p50": 0.8233675,
+   "bler_first": 0.09903437401931756,
+   "mean_rank": 1.9841858834698574,
+   "mean_mcs": 6.249428429618345,
+   "mean_pmi_bits": 540.7137719298246,
+   "mean_ues_per_rbg": 5.648642037786775,
+   "mean_layers_per_rbg": 11.165367746288798,
+   "mu_tb_fraction": 0.9989604679523204,
+   "retx_rbg_fraction": 0.5070934547908232,
+   "mu_sinr_error_db": 1.6653292014422425
+  },
+  "svd_sb": {
+   "cell_se": 12.587464166666667,
+   "ue_se_p5": 0.44543099999999997,
+   "ue_se_p50": 1.0491774999999999,
+   "bler_first": 0.09404051727237439,
+   "mean_rank": 1.9944397783705812,
+   "mean_mcs": 8.098089486139466,
+   "mean_pmi_bits": 0.0,
+   "mean_ues_per_rbg": 5.771495445344129,
+   "mean_layers_per_rbg": 11.496702091767881,
+   "mu_tb_fraction": 0.9994277108388877,
+   "retx_rbg_fraction": 0.48315620782726043,
+   "mu_sinr_error_db": 0.2974062115129378
+  },
+  "_meta": {
+   "n_drops": 2,
+   "n_slots": 200,
+   "warmup_slots": 40,
+   "seed": 1,
+   "runtime_s": 1597.4
+  }
+ },
+ "checks": [
+  {
+   "id": "V1",
+   "description": "eType-II average SE vs TR 37.910 Type II",
+   "measured": "9.77 (-11.5 %)",
+   "criterion": "11.04 \u00b1 15 %",
+   "passed": true
+  },
+  {
+   "id": "V2",
+   "description": "eType-II 5th-percentile SE vs TR 37.910 Type II",
+   "measured": "0.358 (-3.2 %)",
+   "criterion": "0.37 \u00b1 15 %",
+   "passed": true
+  },
+  {
+   "id": "V3",
+   "description": "ideal-CSI bound not below the reference",
+   "measured": "12.59",
+   "criterion": ">= 10.49",
+   "passed": true
+  },
+  {
+   "id": "V4",
+   "description": "ideal CSI > eType-II (average and 5th percentile)",
+   "measured": "12.59 > 9.77, 0.445 > 0.358",
+   "criterion": "both",
+   "passed": true
+  },
+  {
+   "id": "V5",
+   "description": "ITU-R M.2410 requirement with eType-II",
+   "measured": "9.77 / 0.358",
+   "criterion": ">= 7.8 / >= 0.225",
+   "passed": true
+  },
+  {
+   "id": "V6",
+   "description": "first-transmission BLER (target 10 %)",
+   "measured": "0.099 / 0.094",
+   "criterion": "0.07 ... 0.13",
+   "passed": true
+  },
+  {
+   "id": "V7",
+   "description": "MU-MIMO exercised (co-scheduled UTs per RBG)",
+   "measured": "5.65 / 5.77",
+   "criterion": ">= 2",
+   "passed": true
+  }
+ ]
+}

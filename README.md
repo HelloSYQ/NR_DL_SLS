@@ -30,6 +30,9 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   simulator's eType-II result, 9.82 / 0.362, and its ideal-CSI bound,
   12.55 / 0.438; see
   [`docs/benchmark-tr37910.md`](docs/benchmark-tr37910.md).
+- **Validation case** with pass/fail criteria on this set-up
+  (`python examples/validate_du_a.py`): PASS 7/7; see
+  [`docs/validation-du-a.md`](docs/validation-du-a.md).
 - **Next:** FTP traffic and load (P4), or further MU work (RZF, MU-CQI).
 
 ## Install
