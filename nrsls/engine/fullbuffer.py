@@ -507,6 +507,12 @@ def run_full_buffer(cfg: ScenarioConfig, fb: FullBufferConfig, n_drops: int,
     from .simulator import parallel_map
     res = parallel_map(_fb_worker, [(cfg, fb, seed, i) for i in range(n_drops)],
                        n_jobs)
+    return aggregate_drops(res)
+
+
+def aggregate_drops(res: list) -> dict:
+    """KPIs of several ``FullBufferResult`` drops: cell SE and per-drop
+    means averaged, UT SE samples pooled for the percentiles."""
     ue_se = np.concatenate([r.ue_se for r in res])
     return {
         "drops": res,
