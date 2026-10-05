@@ -20,6 +20,8 @@ plot = ["matplotlib>=3.6"]
 test = ["pytest>=7", "scipy>=1.10"]
 # re-extracting the TR 37.910 Annex A reference curves
 refs = ["pymupdf>=1.24", "openpyxl>=3.1"]
+# building and executing the guided-tour notebook
+notebook = ["matplotlib>=3.7", "nbformat>=5", "nbconvert>=7", "ipykernel>=6"]
 
 [tool.setuptools.packages.find]
 include = ["nrsls*"]

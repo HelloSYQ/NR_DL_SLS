@@ -35,6 +35,17 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   [`docs/validation-du-a.md`](docs/validation-du-a.md).
 - **Next:** FTP traffic and load (P4), or further MU work (RZF, MU-CQI).
 
+## Guided tour
+
+[`notebooks/NR_System_Level_Simulator_Guide.ipynb`](notebooks/NR_System_Level_Simulator_Guide.ipynb)
+walks through every module with a live demo (layout, antenna, propagation,
+calibration, channel, CSI, MU-MIMO, the slot loop, the LLS regression), shows
+the full-scale results and explains the Dense Urban validation test, including
+how its criteria catch injected faults. Regenerate it with
+`pip install -e .[notebook] && python notebooks/build_guide.py`, then execute it
+with `jupyter nbconvert --to notebook --execute --inplace notebooks/NR_System_Level_Simulator_Guide.ipynb`
+(under a minute; the full-scale results and the validation run are read from `results/`).
+
 ## Install
 
 ```bash
@@ -107,4 +118,5 @@ run_sls.py               command-line runner
 examples/                figures, reference-data import, calibration comparison
 refs/                    TR 37.910 Annex A curves, RP-180524 per-company data
 tests/                   pytest suite
+notebooks/               guided-tour notebook and its generator
 ```
