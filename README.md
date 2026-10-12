@@ -33,6 +33,12 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
 - **Validation case** with pass/fail criteria on this set-up
   (`python examples/validate_du_a.py`): PASS 7/7; see
   [`docs/validation-du-a.md`](docs/validation-du-a.md).
+- **Codeword-to-layer mapping probe** (`python examples/cw2lm_sls_probe.py`).
+  In the Dense Urban A system with one codeword per UT, the CSI-stage gain
+  of one codeword per layer, with codeword-aware rank adaptation, is +1.2 %
+  (Apple R1-2608231 reports +1.6 %); at fixed rank 4 it is +9.7 %. Per-layer
+  SINR predictions are off by 3–4 dB (standard deviation). See
+  [`docs/cw2lm-sls-probe.md`](docs/cw2lm-sls-probe.md).
 - **Next:** FTP traffic and load (P4), or further MU work (RZF, MU-CQI).
 
 ## Guided tour
