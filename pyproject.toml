@@ -12,7 +12,7 @@ dependencies = [
     "numpy>=1.24",
     # link-level simulator (link abstraction, MCS/TBS/CQI, antenna patterns);
     # pinned to a commit of HelloSYQ/Claude
-    "nrdlsim @ git+https://github.com/HelloSYQ/Claude.git@2390b56750876db4b4639f88d4933b0b4950e0d4",
+    "nrdlsim @ git+https://github.com/HelloSYQ/Claude.git@62d8da621a86ee36f2dbe4cececec0cf10ec7f29",
 ]
 
 [project.optional-dependencies]

@@ -431,7 +431,7 @@ reproduce the link-level simulator. `sls_point` runs one SLS link
 exactly the `nrdlsim` CDL channel that `run_point` uses. The ports are
 re-ordered to the TS 38.214 CSI-RS order, and the CSI / HARQ settings are
 matched. `tests/test_lls_regression.py` requires agreement within 4 %. The
-full sweep agrees within 2 % over CDL-A/C/D, 4T2R–32T4R and −5…30 dB.
+full sweep agrees within 2.5 % over CDL-A/C/D, 4T2R–32T4R and −5…30 dB.
 """)
 co(r"""
 from nrsls.validation.lls import lls_config, matched_fb, sweep
@@ -617,7 +617,7 @@ md(r"""
 | Level | Check | Result |
 |---|---|---|
 | Geometry / channel | RP-180524 per-company coupling gain and geometry (9 configurations) | within ±1.5 dB of the company mean (`docs/calibration-p2.md`) |
-| Link chain | LLS ↔ SLS single link, CDL-A/C/D, 4T2R–32T4R, −5…30 dB | within 2 % SE (`docs/lls-regression.md`) |
+| Link chain | LLS ↔ SLS single link, CDL-A/C/D, 4T2R–32T4R, −5…30 dB | within 2.5 % SE (`docs/lls-regression.md`) |
 | System | Dense Urban-eMBB A vs TR 37.910 (validation test) | **PASS 7/7**: eType-II 9.77 / 0.358, ideal CSI 12.59 / 0.445 around the 11.04 / 0.37 reference (`docs/validation-du-a.md`) |
 
 Documents: `docs/module-plan.md` (design), `docs/calibration-p1.md`,

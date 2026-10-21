@@ -309,7 +309,7 @@ dominant cost. The plan to keep it tractable:
    `run_point` at that SNR (regression test). **Status:** done, see
    [lls-regression.md](lls-regression.md). On the same `nrdlsim` CDL channel
    the SLS link (`nrsls.engine.single_link`, same CSI / link-adaptation /
-   L2S code as the system loop) matches the LLS within 2 % SE over CDL-A/C/D,
+   L2S code as the system loop) matches the LLS within 2.5 % SE over CDL-A/C/D,
    4T2R to 32T4R and −5 to 30 dB; `tests/test_lls_regression.py` holds it
    to 4 %.
 
