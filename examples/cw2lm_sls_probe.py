@@ -42,6 +42,7 @@ from nrdlsim.link_abstraction import _waterfall, effective_sinr_miesm  # noqa: E
 
 from nrsls.config.scenario import get_preset                        # noqa: E402
 from nrsls.engine import fullbuffer as fbm                           # noqa: E402
+from nrsls.engine import link as link_mod                            # noqa: E402
 from nrsls.engine.fullbuffer import FullBufferConfig                 # noqa: E402
 from nrsls.engine.link import tb_precoder                            # noqa: E402
 from nrsls.phy import csi as csi_mod                                 # noqa: E402
@@ -92,7 +93,7 @@ STATS = {}
 
 def _install(n_re):
     orig_select = csi_mod.CSIProcessor.select
-    orig_new_tb = fbm.new_tb
+    orig_new_tb = link_mod.new_tb
     orig_decode = fbm.decode_tb
     st = {"bits": {m: 0.0 for m in MAPPINGS}, "bits_r4": {m: 0.0 for m in MAPPINGS},
           "rank": {m: np.zeros(5) for m in MAPPINGS}, "n_reports": 0,
@@ -146,7 +147,7 @@ def _install(n_re):
         return orig_decode(tb, hw_u, fm, rbg_f, nrb_f, rng, sinr)
 
     csi_mod.CSIProcessor.select = select
-    fbm.new_tb = new_tb
+    link_mod.new_tb = new_tb                   # called by link.new_txs
     fbm.decode_tb = decode_tb
 
 

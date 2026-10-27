@@ -55,6 +55,11 @@ def main():
     ap.add_argument("--pdcch", type=int, default=1, help="PDCCH symbols")
     ap.add_argument("--overhead-re", type=int, default=0,
                     help="CSI-RS/TRS/SSB REs per PRB and slot")
+    ap.add_argument("--cw-mapping", default="alt1", choices=["alt1", "alt2", "alt3"],
+                    help="codewords: alt1 NR (1 up to rank 4), alt2 <= 2, alt3 one per layer")
+    ap.add_argument("--olla-per-rank", action="store_true", help="OLLA per UT, rank and CW")
+    ap.add_argument("--harq-adaptive", action="store_true",
+                    help="re-precode retransmissions with the current report")
     args = ap.parse_args()
 
     cfg = get_preset(args.preset, ue_per_cell=args.ue_per_cell)
@@ -69,7 +74,10 @@ def main():
                               channel_update_slots=args.channel_update,
                               csi_period_slots=args.csi_period,
                               pdcch_symbols=args.pdcch,
-                              overhead_re_per_prb=args.overhead_re)
+                              overhead_re_per_prb=args.overhead_re,
+                              cw_mapping=args.cw_mapping,
+                              olla_per_rank=args.olla_per_rank,
+                              harq_adaptive=args.harq_adaptive)
         t0 = time.time()
         r = run_full_buffer(cfg, fb, args.drops, seed=1, n_jobs=args.jobs)
         ue_se[cb] = r["ue_se"]
@@ -83,7 +91,7 @@ def main():
               f"UTs/RBG {r['mean_ues_per_rbg']:.2f}  layers/RBG "
               f"{r['mean_layers_per_rbg']:.2f}  MU TBs {r['mu_tb_fraction']:.2f}  "
               f"retx RBGs {r['retx_rbg_fraction']:.3f}  MU SINR err "
-              f"{r['mu_sinr_error_db']:+.2f} dB  "
+              f"{r['mu_sinr_error_db']:+.2f} dB  CWs {r['mean_codewords']:.2f}  "
               f"({summary[cb]['runtime_s']} s)", flush=True)
 
     os.makedirs(OUT, exist_ok=True)
@@ -94,7 +102,8 @@ def main():
             "mu_precoder": args.mu_precoder,
             "rbg_size": args.rbg_size, "channel_update_slots": args.channel_update,
             "csi_period_slots": args.csi_period, "pdcch_symbols": args.pdcch,
-            "overhead_re_per_prb": args.overhead_re}
+            "overhead_re_per_prb": args.overhead_re, "cw_mapping": args.cw_mapping,
+            "olla_per_rank": args.olla_per_rank, "harq_adaptive": args.harq_adaptive}
     with open(os.path.join(OUT, f"{args.tag}_full_buffer.json"), "w") as f:
         json.dump({"config": meta, "results": summary,
                    "ue_se": {k: [round(float(x), 5) for x in v] for k, v in ue_se.items()}},

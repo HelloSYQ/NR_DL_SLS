@@ -21,8 +21,13 @@ covariance of the measurement slot (TS 38.214 clause 5.2.2.1).
     frequency point (ideal per-RB precoding, the ``nrdlsim`` LLS precoder).
   * CQI: MIESM over the layer SINRs of each sub-band (and the whole band);
     the highest CQI whose BLER-target SINR is met (nrdlsim CQI tables).
-  * RI: the rank that maximises rank x spectral efficiency of the wideband
-    CQI (one codeword up to rank 4).
+  * Codewords: the layers are split into up to ``max_codewords`` codewords
+    by ``nrdlsim.layer_mapping.layer_groups`` (1: NR up to rank 4; 2: the NR
+    split of ranks 5-8, {1,1}, {1,2}, {2,2}; 4: one codeword per layer).
+    Each codeword gets its own wideband and sub-band CQI from the SINRs of
+    its own layers, as TS 38.214 reports for two codewords.
+  * RI: the rank that maximises sum_CW layers(CW) x spectral efficiency of
+    the codeword's wideband CQI, i.e. rank x SE(CQI) with one codeword.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ import numpy as np
 
 from nrdlsim import mcs_tables
 from nrdlsim.csi import cqi_required_sinr_db
+from nrdlsim.layer_mapping import layer_groups
 from nrdlsim.link_abstraction import effective_sinr_miesm
 
 from math import ceil, log2
@@ -53,6 +59,11 @@ class CSIReport:
     slot: int
     pmi_bits: int = 0             # PMI payload (UCI bits)
     w_per_f: bool = False         # w is (F, S, rank), one per frequency point
+    # layers of each codeword and its CQIs; with one codeword these are
+    # ((0..rank-1),), (cqi_wb,) and cqi_sb[None]
+    groups: tuple = ()
+    cqi_cw_wb: tuple = ()
+    cqi_cw_sb: np.ndarray | None = None   # (n_cw, n_subbands)
 
 
 @lru_cache(maxsize=None)
@@ -82,10 +93,11 @@ class CSIProcessor:
                  mcs_table: int = 2, target_bler: float = 0.1,
                  n_re_per_rb: int = 144, n_beams: int = 4,
                  score_step: int = 1, etype2_combo: int = 6,
-                 pmi_subband: bool = True):
+                 pmi_subband: bool = True, max_codewords: int = 1):
         self.n1, self.n2, self.o1, self.o2 = n1, n2, o1, o2
         self.codebook = codebook
         self.max_rank = max_rank
+        self.max_codewords = max_codewords
         self.cqi_table = mcs_tables.MCS_TO_CQI_TABLE[mcs_table]
         self.target_bler = target_bler
         self.n_re_per_rb = n_re_per_rb
@@ -161,6 +173,54 @@ class CSIProcessor:
             (tuple(int(x) for x in idx[best_g, 3]),)
         return ws[best_g], pmi
 
+    def _wideband_cqi(self, sinr, rank, n_rb):
+        """(layer groups, wideband CQI per codeword, RI metric) of one rank:
+        the metric is sum_CW layers x SE(CQI_CW), rank x SE(CQI) for one
+        codeword."""
+        groups = layer_groups(rank, self.max_codewords)
+        if len(groups) == 1:
+            cqi_wb = self._cqi(sinr, rank, n_rb)
+            se = mcs_tables.get_cqi(cqi_wb, self.cqi_table)[2]
+            return groups, (cqi_wb,), rank * se
+        cqi = tuple(self._cqi(sinr[:, g], len(g), n_rb) for g in groups)
+        metric = sum(len(g) * mcs_tables.get_cqi(q, self.cqi_table)[2]
+                     for g, q in zip(groups, cqi))
+        return groups, cqi, metric
+
+    def _precoder(self, hw, subband_of_f, rank):
+        """(w, pmi, per-layer SINR (F, r), PMI bits) of one rank, or None if
+        the codebook does not support the rank."""
+        bits = 0
+        if self.codebook == "etype2":
+            if not self._et2.supports(rank):
+                return None
+            w, knz = self._et2.derive(hw, subband_of_f, rank)
+            return (w, (), mmse_sinr(hw @ w[subband_of_f]),
+                    self._et2.payload_bits(rank, knz))
+        if self.codebook == "svd":
+            cov = np.einsum("fus,fut->st", np.conj(hw), hw)
+            _, vec = np.linalg.eigh(cov)
+            w = vec[:, ::-1][:, :rank] / np.sqrt(rank)
+            pmi = ()
+        elif self.codebook == "svd_sb":
+            n_sb = int(subband_of_f.max()) + 1
+            onehot = (subband_of_f[None, :] == np.arange(n_sb)[:, None]).astype(float)
+            cov_f = np.einsum("fus,fut->fst", np.conj(hw), hw)
+            cov = np.tensordot(onehot, cov_f, axes=(1, 0))        # (N_sb, S, S)
+            _, vec = np.linalg.eigh(cov)
+            w = vec[..., ::-1][..., :rank] / np.sqrt(rank)        # (N_sb, S, r)
+            pmi = ()
+        elif self.codebook == "svd_rb":
+            _, _, vh = np.linalg.svd(hw, full_matrices=False)
+            w = np.conj(np.swapaxes(vh[:, :rank], -1, -2)) / np.sqrt(rank)
+            pmi = ()
+        else:
+            w, pmi = self._type1_pmi(hw, subband_of_f, rank)
+            bits = self._type1_bits(rank, w.shape[0] if w.ndim == 3 else 1)
+        w_f = (w[subband_of_f] if (w.ndim == 3 and self.codebook in ("type1", "svd_sb"))
+               else w)
+        return w, pmi, mmse_sinr(hw @ w_f), bits                   # sinr (F, r)
+
     def select(self, hw: np.ndarray, subband_of_f: np.ndarray, rb_per_f: int,
                slot: int) -> CSIReport:
         """CSI from whitened serving channels hw (F, U, S)."""
@@ -171,50 +231,26 @@ class CSIProcessor:
                                         self.etype2_combo,
                                         int(subband_of_f.max()) + 1)
         for rank in range(1, min(self.max_rank, hw.shape[1]) + 1):
-            bits = 0
-            if self.codebook == "etype2":
-                if not self._et2.supports(rank):
-                    continue
-                w, knz = self._et2.derive(hw, subband_of_f, rank)
-                sinr = mmse_sinr(hw @ w[subband_of_f])
-                pmi, bits = (), self._et2.payload_bits(rank, knz)
-                cqi_wb = self._cqi(sinr, rank, n_f * rb_per_f)
-                se = mcs_tables.get_cqi(cqi_wb, self.cqi_table)[2]
-                if best is None or rank * se > best[0]:
-                    best = (rank * se, rank, w, pmi, sinr, cqi_wb, bits)
+            p = self._precoder(hw, subband_of_f, rank)
+            if p is None:
                 continue
-            if self.codebook == "svd":
-                cov = np.einsum("fus,fut->st", np.conj(hw), hw)
-                _, vec = np.linalg.eigh(cov)
-                w = vec[:, ::-1][:, :rank] / np.sqrt(rank)
-                pmi = ()
-            elif self.codebook == "svd_sb":
-                n_sb = int(subband_of_f.max()) + 1
-                onehot = (subband_of_f[None, :] == np.arange(n_sb)[:, None]).astype(float)
-                cov_f = np.einsum("fus,fut->fst", np.conj(hw), hw)
-                cov = np.tensordot(onehot, cov_f, axes=(1, 0))        # (N_sb, S, S)
-                _, vec = np.linalg.eigh(cov)
-                w = vec[..., ::-1][..., :rank] / np.sqrt(rank)        # (N_sb, S, r)
-                pmi = ()
-            elif self.codebook == "svd_rb":
-                _, _, vh = np.linalg.svd(hw, full_matrices=False)
-                w = np.conj(np.swapaxes(vh[:, :rank], -1, -2)) / np.sqrt(rank)
-                pmi = ()
-            else:
-                w, pmi = self._type1_pmi(hw, subband_of_f, rank)
-                bits = self._type1_bits(rank, w.shape[0] if w.ndim == 3 else 1)
-            w_f = (w[subband_of_f] if (w.ndim == 3 and self.codebook in ("type1", "svd_sb"))
-                   else w)
-            sinr = mmse_sinr(hw @ w_f)                                 # (F, r)
-            cqi_wb = self._cqi(sinr, rank, n_f * rb_per_f)
-            se = mcs_tables.get_cqi(cqi_wb, self.cqi_table)[2]
-            if best is None or rank * se > best[0]:
-                best = (rank * se, rank, w, pmi, sinr, cqi_wb, bits)
-        _, rank, w, pmi, sinr, cqi_wb, bits = best
+            w, pmi, sinr, bits = p
+            groups, cqi_cw, metric = self._wideband_cqi(sinr, rank, n_f * rb_per_f)
+            if best is None or metric > best[0]:
+                best = (metric, rank, w, pmi, sinr, groups, cqi_cw, bits)
+        _, rank, w, pmi, sinr, groups, cqi_cw, bits = best
         n_sb = int(subband_of_f.max()) + 1
-        cqi_sb = np.array([self._cqi(sinr[subband_of_f == b], rank,
-                                     np.sum(subband_of_f == b) * rb_per_f)
-                           for b in range(n_sb)])
-        return CSIReport(rank=rank, w=w, pmi=pmi, cqi_wb=cqi_wb,
-                         cqi_sb=cqi_sb, slot=slot, pmi_bits=bits,
-                         w_per_f=self.codebook == "svd_rb")
+        if len(groups) == 1:
+            cqi_cw_sb = np.array([[self._cqi(sinr[subband_of_f == b], rank,
+                                             np.sum(subband_of_f == b) * rb_per_f)
+                                   for b in range(n_sb)]])
+        else:
+            cqi_cw_sb = np.array([[self._cqi(sinr[subband_of_f == b][:, g], len(g),
+                                             np.sum(subband_of_f == b) * rb_per_f)
+                                   for b in range(n_sb)] for g in groups])
+        # cqi_wb / cqi_sb: the first codeword's (the only one up to rank 4 in NR)
+        return CSIReport(rank=rank, w=w, pmi=pmi, cqi_wb=cqi_cw[0],
+                         cqi_sb=cqi_cw_sb[0], slot=slot, pmi_bits=bits,
+                         w_per_f=self.codebook == "svd_rb",
+                         groups=tuple(tuple(g) for g in groups), cqi_cw_wb=cqi_cw,
+                         cqi_cw_sb=cqi_cw_sb)
