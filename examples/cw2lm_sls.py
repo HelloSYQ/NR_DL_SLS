@@ -93,6 +93,7 @@ def main() -> int:
     ap.add_argument("--ues", type=int, default=None, help="UTs per cell (default: preset)")
     ap.add_argument("--cases", default="etype2_20ms,svd_2ms")
     ap.add_argument("--harq", default="fixed,adaptive")
+    ap.add_argument("--mappings", default=",".join(MAPPINGS))
     ap.add_argument("--olla-per-rank", action="store_true")
     ap.add_argument("--out", default=os.path.join(OUT, "cw2lm_sls.json"))
     args = ap.parse_args()
@@ -102,7 +103,7 @@ def main() -> int:
     tasks = []
     for case in args.cases.split(","):
         for harq in args.harq.split(","):
-            for m in MAPPINGS:
+            for m in args.mappings.split(","):
                 fb = FullBufferConfig(**all_cases[case], cw_mapping=m,
                                       olla_per_rank=args.olla_per_rank,
                                       harq_adaptive=HARQ[harq])

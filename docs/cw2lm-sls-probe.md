@@ -7,6 +7,8 @@ The simulator transmits one codeword per UT, as NR does up to rank 4 (Alt 1 of t
 
 This is the system-level counterpart of the link-level comparison of Nokia R1-2607066 and Apple R1-2608231 in nrdlsim: `docs/cw2lm-nokia.md` and `docs/cw2lm-apple.md` in HelloSYQ/Claude.
 
+The simulator can now transmit the mappings end to end, with per-codeword CQI, OLLA and HARQ; that study is in [cw2lm-sls.md](cw2lm-sls.md).
+
 ```bash
 python examples/cw2lm_sls_probe.py --drops 2 --slots 160 --warmup 40 --jobs 2   # ~37 min
 ```

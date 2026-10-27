@@ -399,6 +399,11 @@ slot it:
 4. **Collects CSI** every `csi_period_slots`, usable `csi_delay_slots`
    later.
 
+In SU mode a UT can carry more than one codeword (`cw_mapping`: `alt1` NR,
+`alt2` up to two, `alt3` one per layer). Each codeword then has its own CQI,
+MCS, OLLA loop and HARQ process, and the rank is chosen knowing the split;
+see `docs/cw2lm-sls.md`.
+
 A small live run follows: the RP-180524 URLLC 4 GHz layout with an 8-port
 array, 4 UTs per cell and 40 slots, comparing SU and MU on the same drop.
 Forty slots are too few for OLLA to converge, so expect BLER above the 10 %
@@ -623,10 +628,11 @@ md(r"""
 Documents: `docs/module-plan.md` (design), `docs/calibration-p1.md`,
 `docs/calibration-p2.md`, `docs/results-p3.md`, `docs/results-p4-mu.md`,
 `docs/lls-regression.md`, `docs/benchmark-tr37910.md`,
-`docs/validation-du-a.md`.
+`docs/validation-du-a.md`, `docs/cw2lm-sls-probe.md`, `docs/cw2lm-sls.md`.
 
-Open items: FTP traffic models (UPT vs load), a non-ideal channel-estimation
-option, and multi-panel / port-selection codebooks.
+Open items: a SIC receiver for the multi-codeword mappings, FTP traffic
+models (UPT vs load), a non-ideal channel-estimation option, and
+multi-panel / port-selection codebooks.
 """)
 
 nb["cells"] = cells

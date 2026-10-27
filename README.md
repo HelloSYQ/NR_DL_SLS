@@ -39,7 +39,16 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   (Apple R1-2608231 reports +1.6 %); at fixed rank 4 it is +9.7 %. Per-layer
   SINR predictions are off by 3–4 dB (standard deviation). See
   [`docs/cw2lm-sls-probe.md`](docs/cw2lm-sls-probe.md).
-- **Next:** FTP traffic and load (P4), or further MU work (RZF, MU-CQI).
+- **Multi-codeword SU-MIMO** (`FullBufferConfig.cw_mapping`): Alt 1 (NR),
+  Alt 2 (≤ 2 codewords) or Alt 3 (one per layer), with per-codeword CQI,
+  codeword-aware RI, OLLA per codeword (optionally per rank), one TB and HARQ
+  process per codeword, and fixed or adaptive retransmissions. Alt 1 is
+  bit-identical to before. On Dense Urban A with MMSE-IRC more codewords do
+  not gain: with OLLA converged, one codeword per layer loses 1–2 % cell SE
+  and 2.5–4 % at the median and 5th percentile (Apple-like and Nokia-like
+  CSI); in 160-slot runs, and with non-adaptive retransmissions, up to 7 %.
+  See [`docs/cw2lm-sls.md`](docs/cw2lm-sls.md).
+- **Next:** SIC receiver (WP4), then FTP traffic and load.
 
 ## Guided tour
 
@@ -83,6 +92,10 @@ python examples/plot_su_vs_mu.py
 
 # LLS <-> SLS single-link regression sweep (the test is in the pytest suite)
 python examples/lls_regression.py --jobs 4
+
+# codeword-to-layer mapping: one run, and the Alt 1/2/3 study
+python examples/run_full_buffer.py --cw-mapping alt3 --harq-adaptive
+python examples/cw2lm_sls.py --drops 2 --slots 160 --jobs 4
 
 # tests
 python -m pytest
