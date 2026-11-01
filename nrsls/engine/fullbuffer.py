@@ -34,7 +34,7 @@ references for comparing mappings: ``receiver='sic'`` (codeword-level
 MMSE-SIC: the codewords are decoded in index order, each one that decodes
 is cancelled, and the CQIs are reported for it) and ``ideal_la`` (each new
 TB's MCS is the highest meeting the BLER target on the SINR it actually
-gets).
+gets; with SIC, on its SINR once the earlier codewords are cancelled).
 
 KPIs after ``warmup_slots``: UT throughput, UT spectral efficiency
 (throughput / occupied bandwidth), cell spectral efficiency (sum throughput /
@@ -504,7 +504,9 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
 
         # 3. decode
         tx_sinr = {}                  # per-layer SINR of each multi-codeword transmission
-        tx_sic = {}                   # SIC: (effective channel, cancelled layers)
+        # SIC: (effective channel, layers of the earlier codewords that
+        # decoded, layers of all earlier codewords)
+        tx_sic = {}
         for tb in txs:
             u = tb["ue"]
             fm = rbg_mask[tb["rbgs"]].any(axis=0)
@@ -514,8 +516,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                 # codewords in index order (their TBs are listed in that
                 # order); the layers of those that decoded are cancelled
                 if tb["tx"] not in tx_sic:
-                    tx_sic[tb["tx"]] = (hw[u, fm] @ tb_precoder(tb, fm, rbg_f), [])
-                g, cancelled = tx_sic[tb["tx"]]
+                    tx_sic[tb["tx"]] = (hw[u, fm] @ tb_precoder(tb, fm, rbg_f), [], [])
+                g, cancelled, _ = tx_sic[tb["tx"]]
                 sinr = sic_layer_sinr(g, tb["layers"], cancelled)
             elif "tx" in tb:
                 # MMSE over all layers of the transmission (the other
@@ -535,11 +537,21 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
             if fb.ideal_la and first:
                 if sinr is None:
                     sinr = mmse_sinr(hw[u, fm] @ tb_precoder(tb, fm, rbg_f))
-                ideal_mcs(tb, sinr, nrb_f[fm], rb_per_rbg, n_re, fb.mcs_table,
+                plan = sinr
+                if "tx" in tb and sic:
+                    # the MCS assumes the earlier codewords are cancelled: the
+                    # transmitter cannot know whether they decode, so error
+                    # propagation hits this reference too
+                    g, cancelled, earlier = tx_sic[tb["tx"]]
+                    if len(cancelled) < len(earlier):
+                        plan = sic_layer_sinr(g, tb["layers"], earlier)
+                ideal_mcs(tb, plan, nrb_f[fm], rb_per_rbg, n_re, fb.mcs_table,
                           fb.target_bler)
             ok = decode_tb(tb, hw[u], fm, rbg_f, nrb_f, rng, sinr)
-            if ok and "tx" in tb and sic:
-                tx_sic[tb["tx"]][1].extend(tb["layers"])
+            if "tx" in tb and sic:
+                tx_sic[tb["tx"]][2].extend(tb["layers"])
+                if ok:
+                    tx_sic[tb["tx"]][1].extend(tb["layers"])
             if first:
                 cw = tb.get("cw", 0)
                 (la_mu if tb.get("mu") else la).update(u, ok, cw=cw, tx_rank=tb["rank"])

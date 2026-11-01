@@ -295,3 +295,32 @@ def test_cw_mapping_names_and_reference_options():
         cfg, fb = _small(mu_mimo=True, max_rank=2, **kw)
         with pytest.raises(ValueError):
             run_full_buffer_drop(cfg, fb, np.random.default_rng(0))
+
+
+def test_sic_ideal_la_does_not_know_whether_earlier_codewords_decode(monkeypatch):
+    """With SIC, the ideal MCS of a codeword is chosen on its SINR with all
+    earlier codewords cancelled, even when one of them then fails; the
+    decoder uses the actual cancellation (error propagation kept)."""
+    from nrsls.engine import fullbuffer as fbm
+    calls, plans = {}, []
+    real_sic, real_ideal = fbm.sic_layer_sinr, fbm.ideal_mcs
+
+    def sic(g, layers, cancelled):
+        out = real_sic(g, layers, cancelled)
+        calls[id(out)] = (list(layers), sorted(cancelled))
+        return out
+
+    def ideal(tb, sinr, *a):
+        plans.append((list(tb["layers"]), calls.get(id(sinr))))
+        return real_ideal(tb, sinr, *a)
+
+    monkeypatch.setattr(fbm, "sic_layer_sinr", sic)
+    monkeypatch.setattr(fbm, "ideal_mcs", ideal)
+    monkeypatch.setattr(fbm, "decode_tb", lambda *a, **k: False)    # nothing decodes
+    cfg, fb = _small(codebook="svd_rb", cw_mapping="per_layer", receiver="sic",
+                     ideal_la=True, harq_adaptive=True)
+    run_full_buffer_drop(cfg, fb, np.random.default_rng(2))
+    later = [(layers, c) for layers, c in plans if layers[0] > 0]
+    assert later
+    for layers, (sinr_layers, cancelled) in later:
+        assert sinr_layers == layers and cancelled == list(range(layers[0]))

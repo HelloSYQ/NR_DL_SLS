@@ -15,7 +15,8 @@ Two references for the codeword-mapping study: a codeword-level SIC
 receiver (:func:`sic_layer_sinr`: the codewords of a transmission are
 decoded in index order and each one that decodes is cancelled) and ideal
 link adaptation (:func:`ideal_mcs`: the MCS is chosen on the SINR the TB
-actually gets).
+actually gets; with SIC, on the SINR once the earlier codewords of its
+transmission are cancelled, since whether they decode is not known).
 """
 
 from __future__ import annotations

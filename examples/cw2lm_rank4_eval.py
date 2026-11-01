@@ -15,7 +15,8 @@ rank is chosen knowing the split.  Variants (``--variants``):
   irc-ideal   MMSE-IRC, ideal link adaptation: each new TB's MCS is the
               highest meeting the BLER target on the SINR it actually gets
   sic-olla    codeword-level MMSE-SIC receiver (CQIs reported for SIC)
-  sic-ideal   SIC with ideal link adaptation
+  sic-ideal   SIC with ideal link adaptation (the MCS of a codeword assumes the
+              earlier ones are cancelled; whether they decode is not known)
 
 With one codeword SIC is MMSE-IRC, so 'nr' is not run with SIC; the SIC
 variants are compared with the IRC run of 'nr' under the same link
