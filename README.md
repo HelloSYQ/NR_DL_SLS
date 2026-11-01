@@ -48,7 +48,17 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   and 2.5–4 % at the median and 5th percentile (Apple-like and Nokia-like
   CSI); in 160-slot runs, and with non-adaptive retransmissions, up to 7 %.
   See [`docs/cw2lm-sls.md`](docs/cw2lm-sls.md).
-- **Next:** SIC receiver (WP4), then FTP traffic and load.
+- **Codeword mapping up to rank 4: NR, LTE style, one codeword per layer**
+  (`python examples/cw2lm_rank4_eval.py`), with converged OLLA, a
+  codeword-level MMSE-SIC receiver (`receiver='sic'`) and ideal link
+  adaptation (`ideal_la`) as references. With MMSE-IRC, NR's single codeword
+  is best: LTE style loses 0.7–1.1 % cell SE, one codeword per layer
+  1.6–1.8 %. With SIC, LTE style gains 4.2–5.5 % cell SE, about neutral at
+  the cell edge, if OLLA skips propagated failures (`olla_sic_conditional`;
+  about 2 % otherwise), and 6–9 % with ideal link adaptation; one codeword
+  per layer gains no more and loses 3–6 % at the 5th percentile. See
+  [`docs/cw2lm-rank4.md`](docs/cw2lm-rank4.md).
+- **Next:** FTP traffic and load.
 
 ## Guided tour
 
@@ -96,6 +106,9 @@ python examples/lls_regression.py --jobs 4
 # codeword-to-layer mapping: one run, and the Alt 1/2/3 study
 python examples/run_full_buffer.py --cw-mapping alt3 --harq-adaptive
 python examples/cw2lm_sls.py --drops 2 --slots 160 --jobs 4
+python examples/run_full_buffer.py --preset du-a --cw-mapping lte --receiver sic \
+    --olla-sic-conditional --harq-adaptive --codebooks svd --drops 1 --tag du_lte_sic
+python examples/cw2lm_rank4_eval.py --summary-only --plot results/cw2lm_rank4.png
 
 # tests
 python -m pytest

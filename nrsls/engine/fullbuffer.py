@@ -29,11 +29,17 @@ layer (``nrdlsim.layer_mapping.layer_groups``).  With more than one
 codeword the report carries per-codeword CQIs, RI maximises the sum over
 codewords, every codeword is its own TB with its own MCS, OLLA loop
 (``olla_per_rank``: also per rank) and HARQ process, and the PF metric sums
-the codewords' rates; see ``engine/link.py`` for retransmissions.
+the codewords' rates; see ``engine/link.py`` for retransmissions.  Two
+references for comparing mappings: ``receiver='sic'`` (codeword-level
+MMSE-SIC: the codewords are decoded in index order, each one that decodes
+is cancelled, and the CQIs are reported for it) and ``ideal_la`` (each new
+TB's MCS is the highest meeting the BLER target on the SINR it actually
+gets; with SIC, on its SINR once the earlier codewords are cancelled).
 
 KPIs after ``warmup_slots``: UT throughput, UT spectral efficiency
-(throughput / occupied bandwidth), cell spectral efficiency (sum throughput /
-(cells x bandwidth)), first-transmission BLER, rank and MCS statistics.
+(throughput / ``channel_bandwidth_hz``, or the occupied bandwidth if that is
+None), cell spectral efficiency (sum throughput / (cells x the same
+bandwidth)), first-transmission BLER, rank and MCS statistics.
 """
 
 from __future__ import annotations
@@ -54,8 +60,8 @@ from ..propagation.fast_fading import channel_batch, concat_clusters, subset_clu
 from .drop import generate_drop
 from ..mac.mu_mimo import greedy_pairing, unit_columns
 from ..phy.sinr import mmse_sinr
-from .link import (decode_tb, harq_units, make_tb, new_txs, retransmission,
-                   tb_precoder)
+from .link import (decode_tb, harq_units, ideal_mcs, make_tb, new_txs, retransmission,
+                   sic_layer_sinr, tb_precoder)
 
 
 @dataclass
@@ -99,17 +105,35 @@ class FullBufferConfig:
     # by default; True charges double-symbol + 1 additional pair (48 REs)
     mu_dmrs_overhead: bool = False
     mu_precoder: str = "rzf"          # 'rzf' or 'zf' on the reports
-    # codeword-to-layer mapping (SU-MIMO): 'alt1' (NR, 1 CW up to rank 4),
-    # 'alt2' (<= 2 CW), 'alt3' (one CW per layer)
+    # codeword-to-layer mapping (SU-MIMO): 'alt1' = 'nr' (1 CW up to rank 4),
+    # 'alt2' = 'lte' (<= 2 CW, TS 36.211 Table 6.3.3.2-1), 'alt3' =
+    # 'per_layer' (one CW per layer)
     cw_mapping: str = "alt1"
     olla_per_rank: bool = False       # OLLA loop per UT, rank and codeword
     # SU retransmissions: False keeps the first transmission's precoder (and
     # a refilled codeword its first-transmission CQI); True re-precodes the
     # PDSCH with the UT's current report if its rank matches
     harq_adaptive: bool = False
+    # SU receiver: 'irc' (MMSE-IRC) or 'sic' (codeword-level MMSE-SIC, ideal
+    # cancellation of the codewords that decode, decoded in index order; the
+    # UT reports each codeword's CQI after the earlier ones are cancelled).
+    # With one codeword both are MMSE-IRC
+    receiver: str = "irc"
+    # SIC: the OLLA loop of a codeword skips the transmissions in which an
+    # earlier codeword failed (its NACK is then error propagation, not CQI
+    # error); the gNB sees every codeword's ACK/NACK
+    olla_sic_conditional: bool = False
+    # ideal link adaptation (a reference, SU): every new TB takes the highest
+    # MCS meeting target_bler on the SINR it actually gets (OLLA unused)
+    ideal_la: bool = False
 
 
-CW_MAPPINGS = {"alt1": 1, "alt2": 2, "alt3": 4}
+# maximum codewords per transmission.  Up to rank 4 the three splits are
+#   'nr'        one codeword on all layers (TS 38.211 Table 7.3.1.3-1);
+#   'lte'       {1} / {1,1} / {1,2} / {2,2} for ranks 1-4, the LTE mapping of
+#               TS 36.211 Table 6.3.3.2-1 (and the NR split of ranks 5-8);
+#   'per_layer' one codeword per layer.
+CW_MAPPINGS = {"alt1": 1, "alt2": 2, "alt3": 4, "nr": 1, "lte": 2, "per_layer": 4}
 
 
 @dataclass
@@ -278,9 +302,13 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     if fb.cw_mapping not in CW_MAPPINGS:
         raise ValueError(f"cw_mapping must be one of {sorted(CW_MAPPINGS)}")
     max_cw = CW_MAPPINGS[fb.cw_mapping]
-    if fb.mu_mimo and (max_cw > 1 or fb.olla_per_rank or fb.harq_adaptive):
-        raise ValueError("multi-codeword mappings, per-rank OLLA and adaptive HARQ "
-                         "are SU-MIMO only")
+    if fb.receiver not in ("irc", "sic"):
+        raise ValueError("receiver must be 'irc' or 'sic'")
+    if fb.mu_mimo and (max_cw > 1 or fb.olla_per_rank or fb.harq_adaptive
+                       or fb.receiver != "irc" or fb.ideal_la or fb.olla_sic_conditional):
+        raise ValueError("multi-codeword mappings, per-rank OLLA, adaptive HARQ, SIC "
+                         "and ideal link adaptation are SU-MIMO only")
+    sic = fb.receiver == "sic" and max_cw > 1
     d = generate_drop(cfg, rng, keep_clusters=True)
     lay, n_ue = d.layout, d.ues.n
     car = cfg.carrier
@@ -369,7 +397,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                         n_beams=fb.n_beams, score_step=fb.pmi_score_step,
                         etype2_combo=fb.etype2_combo,
                         pmi_subband=fb.type1_subband_pmi,
-                        max_codewords=max_cw)
+                        max_codewords=max_cw, sic=sic)
     pending = [[] for _ in range(n_ue)]                   # (avail, report, sinr_sb)
     current = [None] * n_ue
     pf_avg = np.full(n_ue, 1.0)
@@ -481,12 +509,22 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
 
         # 3. decode
         tx_sinr = {}                  # per-layer SINR of each multi-codeword transmission
+        # SIC: (effective channel, layers of the earlier codewords that
+        # decoded, layers of all earlier codewords)
+        tx_sic = {}
         for tb in txs:
             u = tb["ue"]
             fm = rbg_mask[tb["rbgs"]].any(axis=0)
             first = tb["ntx"] == 0
             sinr = None
-            if "tx" in tb:
+            if "tx" in tb and sic:
+                # codewords in index order (their TBs are listed in that
+                # order); the layers of those that decoded are cancelled
+                if tb["tx"] not in tx_sic:
+                    tx_sic[tb["tx"]] = (hw[u, fm] @ tb_precoder(tb, fm, rbg_f), [], [])
+                g, cancelled, _ = tx_sic[tb["tx"]]
+                sinr = sic_layer_sinr(g, tb["layers"], cancelled)
+            elif "tx" in tb:
                 # MMSE over all layers of the transmission (the other
                 # codewords are interference), this codeword's layers
                 if tb["tx"] not in tx_sinr:
@@ -501,10 +539,30 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                 if first and tb.get("mu") and slot >= fb.warmup_slots:
                     act = 10 * np.log10(max(2 ** np.mean(np.log2(1 + sinr)) - 1, 1e-6))
                     diag["err"].append(tb["est_db"] - act)
+            if fb.ideal_la and first:
+                if sinr is None:
+                    sinr = mmse_sinr(hw[u, fm] @ tb_precoder(tb, fm, rbg_f))
+                plan = sinr
+                if "tx" in tb and sic:
+                    # the MCS assumes the earlier codewords are cancelled: the
+                    # transmitter cannot know whether they decode, so error
+                    # propagation hits this reference too
+                    g, cancelled, earlier = tx_sic[tb["tx"]]
+                    if len(cancelled) < len(earlier):
+                        plan = sic_layer_sinr(g, tb["layers"], earlier)
+                ideal_mcs(tb, plan, nrb_f[fm], rb_per_rbg, n_re, fb.mcs_table,
+                          fb.target_bler)
+            propagated = ("tx" in tb and sic
+                          and len(tx_sic[tb["tx"]][1]) < len(tx_sic[tb["tx"]][2]))
             ok = decode_tb(tb, hw[u], fm, rbg_f, nrb_f, rng, sinr)
+            if "tx" in tb and sic:
+                tx_sic[tb["tx"]][2].extend(tb["layers"])
+                if ok:
+                    tx_sic[tb["tx"]][1].extend(tb["layers"])
             if first:
                 cw = tb.get("cw", 0)
-                (la_mu if tb.get("mu") else la).update(u, ok, cw=cw, tx_rank=tb["rank"])
+                if not (propagated and fb.olla_sic_conditional):
+                    (la_mu if tb.get("mu") else la).update(u, ok, cw=cw, tx_rank=tb["rank"])
                 if slot >= fb.warmup_slots:
                     n_mu_first += int(bool(tb.get("mu")))
                 pf_avg[u] += tb["bits"] / fb.pf_window_slots

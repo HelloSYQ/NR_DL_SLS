@@ -183,3 +183,167 @@ def test_multi_codeword_mappings_are_su_only():
     with pytest.raises(ValueError):
         run_full_buffer_drop(cfg, dataclasses.replace(fb, mu_mimo=False, cw_mapping="alt5"),
                              np.random.default_rng(0))
+
+
+# --- codeword-level SIC and ideal link adaptation (references) -------------
+def _selective_channel(f=8, s=32, seed=1):
+    """Frequency-selective whitened channel (F, 4, S): a wideband precoder
+    leaves inter-layer interference, which SIC can remove."""
+    rng = np.random.default_rng(seed)
+    return 3 * (rng.normal(size=(f, 4, s)) + 1j * rng.normal(size=(f, 4, s)))
+
+
+def test_sic_layer_sinr_cancels_decoded_layers():
+    from nrsls.engine.link import sic_layer_sinr
+    from nrsls.phy.sinr import mmse_sinr
+    g = _selective_channel()[:, :, :3]                       # (F, 4, 3)
+    assert np.array_equal(sic_layer_sinr(g, [1, 2], []), mmse_sinr(g)[:, [1, 2]])
+    # everything else cancelled: matched filter, |g_l|^2
+    assert np.allclose(sic_layer_sinr(g, [1], [0, 2])[:, 0],
+                       np.sum(np.abs(g[:, :, 1]) ** 2, axis=1))
+    assert np.all(sic_layer_sinr(g, [2], [0]) >= mmse_sinr(g)[:, [2]] - 1e-9)
+
+
+def test_sic_report_cqis_assume_earlier_codewords_cancelled():
+    hw = _selective_channel()
+    sb = np.repeat(np.arange(2), 4)
+    # one codeword: SIC changes nothing
+    a = CSIProcessor(8, 2, codebook="svd").select(hw, sb, 4, 0)
+    b = CSIProcessor(8, 2, codebook="svd", sic=True).select(hw, sb, 4, 0)
+    assert (a.rank, a.cqi_wb) == (b.rank, b.cqi_wb) and np.array_equal(a.cqi_sb, b.cqi_sb)
+    from nrsls.phy.sinr import mmse_sinr
+    for max_cw in (2, 4):                                    # LTE, one per layer
+        irc = CSIProcessor(8, 2, codebook="svd", max_codewords=max_cw)
+        sic = CSIProcessor(8, 2, codebook="svd", max_codewords=max_cw, sic=True)
+        w, _, s_irc, _ = irc._precoder(hw, sb, 4)
+        _, _, s_sic, _ = sic._precoder(hw, sb, 4)
+        g = hw @ w
+        groups = [[0, 1], [2, 3]] if max_cw == 2 else [[0], [1], [2], [3]]
+        for grp in groups:                                   # after groups before
+            assert np.allclose(s_sic[:, grp], mmse_sinr(g[..., grp[0]:])[:, :len(grp)])
+        assert np.array_equal(s_sic[:, groups[0]], s_irc[:, groups[0]])
+        assert np.all(s_sic >= s_irc - 1e-9) and np.any(s_sic > s_irc * 1.01)
+        r_irc, r_sic = irc.select(hw, sb, 4, 0), sic.select(hw, sb, 4, 0)
+        if r_irc.rank == r_sic.rank:
+            assert all(q2 >= q1 for q1, q2 in zip(r_irc.cqi_cw_wb, r_sic.cqi_cw_wb))
+
+
+def test_ideal_mcs_is_the_highest_meeting_the_target():
+    from nrdlsim import mcs_tables
+    from nrdlsim import tbs as tbs_mod
+    from nrdlsim.link_abstraction import bler_from_effective_sinr, effective_sinr_miesm
+    from nrsls.engine.link import ideal_mcs
+    rb_per_rbg, nrb = np.array([4, 4]), np.full(4, 2)
+    for snr_db in (-3.0, 8.0, 17.0, 40.0):
+        sinr = np.full((4, 2), 10 ** (snr_db / 10))          # 4 points x 2 layers
+        tb = {"rbgs": np.array([0, 1])}
+        ideal_mcs(tb, sinr, nrb, rb_per_rbg, 132, 2, 0.1)
+        re = np.repeat(sinr, nrb, axis=0)
+
+        def bler(i):
+            info = mcs_tables.get_mcs(i, 2)
+            bits = tbs_mod.compute_tbs(132, 8, info.modulation_order,
+                                       info.target_code_rate, 2)
+            return bler_from_effective_sinr(effective_sinr_miesm(re, info.modulation_order),
+                                            info.modulation_order, info.target_code_rate,
+                                            bits), bits
+        i = tb["info"].index
+        assert tb["bits"] == bler(i)[1]
+        if i > 0:
+            assert bler(i)[0] <= 0.1 + 1e-6
+        if i < mcs_tables.num_mcs(2) - 1:
+            assert bler(i + 1)[0] > 0.1
+
+
+def test_sic_with_one_codeword_is_the_irc_system():
+    cfg, fb = _small(codebook="svd", cw_mapping="nr")
+    a = run_full_buffer_drop(cfg, fb, np.random.default_rng(3))
+    b = run_full_buffer_drop(cfg, dataclasses.replace(fb, receiver="sic"),
+                             np.random.default_rng(3))
+    assert _same(a, b)
+    # rank 1: the SIC decoding path of the per-layer mapping reproduces NR
+    cfg, fb = _small(codebook="svd", max_rank=1)
+    a = run_full_buffer_drop(cfg, fb, np.random.default_rng(4))
+    b = run_full_buffer_drop(cfg, dataclasses.replace(fb, cw_mapping="per_layer",
+                                                      receiver="sic"),
+                             np.random.default_rng(4))
+    assert _same(a, b)
+
+
+@pytest.mark.parametrize("mapping,receiver", [("lte", "sic"), ("per_layer", "sic"),
+                                              ("nr", "irc"), ("per_layer", "irc")])
+def test_sic_and_ideal_la_systems_run(mapping, receiver):
+    cfg, fb = _small(codebook="svd_rb", cw_mapping=mapping, receiver=receiver,
+                     harq_adaptive=True)
+    olla = run_full_buffer_drop(cfg, fb, np.random.default_rng(2))
+    ideal = run_full_buffer_drop(cfg, dataclasses.replace(fb, ideal_la=True),
+                                 np.random.default_rng(2))
+    for r in (olla, ideal):
+        assert r.cell_se > 0 and 1 <= r.mean_codewords <= 4
+    # the MCS meets the target on the actual SINR: BLER at most ~target
+    assert ideal.bler_first <= 0.15
+
+
+def test_cw_mapping_names_and_reference_options():
+    from nrsls.engine.fullbuffer import CW_MAPPINGS
+    assert [CW_MAPPINGS[k] for k in ("nr", "lte", "per_layer")] == \
+        [CW_MAPPINGS[k] for k in ("alt1", "alt2", "alt3")]
+    cfg, fb = _small(receiver="mlse")
+    with pytest.raises(ValueError):
+        run_full_buffer_drop(cfg, fb, np.random.default_rng(0))
+    for kw in ({"receiver": "sic"}, {"ideal_la": True}):
+        cfg, fb = _small(mu_mimo=True, max_rank=2, **kw)
+        with pytest.raises(ValueError):
+            run_full_buffer_drop(cfg, fb, np.random.default_rng(0))
+
+
+def test_sic_ideal_la_does_not_know_whether_earlier_codewords_decode(monkeypatch):
+    """With SIC, the ideal MCS of a codeword is chosen on its SINR with all
+    earlier codewords cancelled, even when one of them then fails; the
+    decoder uses the actual cancellation (error propagation kept)."""
+    from nrsls.engine import fullbuffer as fbm
+    calls, plans = {}, []
+    real_sic, real_ideal = fbm.sic_layer_sinr, fbm.ideal_mcs
+
+    def sic(g, layers, cancelled):
+        out = real_sic(g, layers, cancelled)
+        calls[id(out)] = (list(layers), sorted(cancelled))
+        return out
+
+    def ideal(tb, sinr, *a):
+        plans.append((list(tb["layers"]), calls.get(id(sinr))))
+        return real_ideal(tb, sinr, *a)
+
+    monkeypatch.setattr(fbm, "sic_layer_sinr", sic)
+    monkeypatch.setattr(fbm, "ideal_mcs", ideal)
+    monkeypatch.setattr(fbm, "decode_tb", lambda *a, **k: False)    # nothing decodes
+    cfg, fb = _small(codebook="svd_rb", cw_mapping="per_layer", receiver="sic",
+                     ideal_la=True, harq_adaptive=True)
+    run_full_buffer_drop(cfg, fb, np.random.default_rng(2))
+    later = [(layers, c) for layers, c in plans if layers[0] > 0]
+    assert later
+    for layers, (sinr_layers, cancelled) in later:
+        assert sinr_layers == layers and cancelled == list(range(layers[0]))
+
+
+@pytest.mark.parametrize("cond", [False, True])
+def test_sic_conditional_olla_skips_propagated_failures(monkeypatch, cond):
+    """olla_sic_conditional: a codeword's OLLA loop is not updated in a
+    transmission whose earlier codeword failed."""
+    from nrsls.engine import fullbuffer as fbm
+    from nrsls.mac.link_adaptation import LinkAdaptation
+    updates = []
+    real = LinkAdaptation.update
+
+    def update(self, ue, ack, cw=0, tx_rank=None):
+        updates.append(cw)
+        return real(self, ue, ack, cw=cw, tx_rank=tx_rank)
+
+    monkeypatch.setattr(LinkAdaptation, "update", update)
+    monkeypatch.setattr(fbm, "decode_tb", lambda tb, *a, **k: tb.get("cw", 0) > 0)
+    cfg, fb = _small(codebook="svd_rb", cw_mapping="lte", receiver="sic",
+                     harq_adaptive=True, olla_sic_conditional=cond)
+    run_full_buffer_drop(cfg, fb, np.random.default_rng(2))
+    assert 0 in updates
+    # codeword 0 always fails, so codeword 1's loop moves only without the option
+    assert (1 in updates) is (not cond)
