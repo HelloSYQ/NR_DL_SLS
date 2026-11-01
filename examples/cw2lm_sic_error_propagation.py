@@ -7,7 +7,7 @@ of codewords 1, 2, ... after warm-up, how often they fail when an earlier
 codeword of the same transmission failed, and when all earlier ones decoded.
 It wraps the engine's ``decode_tb`` to see every decoding outcome.
 
-    python examples/cw2lm_sic_error_propagation.py                    # ~15 min
+    python examples/cw2lm_sic_error_propagation.py                    # ~10 min
     python examples/cw2lm_sic_error_propagation.py --variant sic-olla-cond \
         --scheme per_layer --case etype2_20ms
 """

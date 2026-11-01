@@ -27,7 +27,7 @@ python examples/cw2lm_rank4_eval.py --variants irc-olla --drops 3 --jobs 4      
 python examples/cw2lm_rank4_eval.py --variants sic-olla,sic-olla-cond --schemes lte,per_layer --drops 3 --jobs 4
 python examples/cw2lm_rank4_eval.py --variants irc-ideal,sic-ideal --drops 2 --slots 240 --warmup 80 --jobs 4
 python examples/cw2lm_rank4_eval.py --summary-only --plot results/cw2lm_rank4.png
-python examples/cw2lm_sic_error_propagation.py                                 # ~15 min
+python examples/cw2lm_sic_error_propagation.py                                 # ~10 min
 ```
 
 Every finished drop is appended to `results/cw2lm_rank4_runs.jsonl`, together with the commit that produced it and the per-UT SE, and a re-run skips the drops already logged. `results/cw2lm_rank4.json` holds the summary that the tables below are taken from.
@@ -64,7 +64,7 @@ With one codeword, SIC is MMSE-IRC and both OLLA policies are the same. NR is th
 
 **Codeword-level SIC** (`FullBufferConfig.receiver = 'sic'`). The UT decodes the codewords of a transmission in index order, which is strongest layers first. After each codeword that decodes, it cancels that codeword's layers before computing the MMSE-IRC SINR of the remaining layers. Cancellation is ideal, but error propagation is kept: a codeword that fails is not cancelled, and its layers stay as interference for the later codewords. The CSI report assumes the earlier codewords are cancelled when it computes each codeword's CQI, so CQI and RI see the SIC gain. With chase combining, every attempt adds the SINR it got after cancellation.
 
-**OLLA with SIC** (`FullBufferConfig.olla_sic_conditional`). The later codewords' CQIs assume the earlier ones decode. When an earlier codeword fails, a later one usually fails too. In one SVD drop with LTE style and SIC (`examples/cw2lm_sic_error_propagation.py`, 200 slots), codeword 1's first transmissions fail 62 % of the time after codeword 0 failed (5,273 TBs), against 5.4 % when codeword 0 decoded (38,577 TBs). Plain per-codeword OLLA counts all those NACKs, so to hold 10 % overall it pushes codeword 1 to about 5 % BLER in the transmissions where its CQI applies. That is a margin the CQI did not ask for. With `olla_sic_conditional` a codeword's loop is not updated in a transmission whose earlier codeword failed. The later codewords then run at 10 % when the earlier ones decode, and above that overall: 16–17 % for codeword 1, and up to 31–34 % for codeword 4. This needs nothing new from the UT: the gNB receives every codeword's ACK/NACK.
+**OLLA with SIC** (`FullBufferConfig.olla_sic_conditional`). The later codewords' CQIs assume the earlier ones decode. When an earlier codeword fails, a later one usually fails too. In one SVD drop with LTE style and SIC (`examples/cw2lm_sic_error_propagation.py`, 200 slots), codeword 1's first transmissions fail 62 % of the time after codeword 0 failed (5,273 TBs), against 5.4 % when codeword 0 decoded (38,577 TBs). Plain per-codeword OLLA counts all those NACKs, so to hold 10 % overall it pushes codeword 1 to about 5 % BLER in the transmissions where its CQI applies. That is a margin the CQI did not ask for. With `olla_sic_conditional` a codeword's loop is not updated in a transmission whose earlier codeword failed. The later codewords' loops then aim at 10 % BLER when the earlier ones decode, and the codewords run above that overall: 16–17 % for codeword 1, and up to 31–34 % for codeword 4. This needs nothing new from the UT: the gNB receives every codeword's ACK/NACK.
 
 ## Results
 
