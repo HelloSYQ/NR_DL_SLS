@@ -324,3 +324,26 @@ def test_sic_ideal_la_does_not_know_whether_earlier_codewords_decode(monkeypatch
     assert later
     for layers, (sinr_layers, cancelled) in later:
         assert sinr_layers == layers and cancelled == list(range(layers[0]))
+
+
+@pytest.mark.parametrize("cond", [False, True])
+def test_sic_conditional_olla_skips_propagated_failures(monkeypatch, cond):
+    """olla_sic_conditional: a codeword's OLLA loop is not updated in a
+    transmission whose earlier codeword failed."""
+    from nrsls.engine import fullbuffer as fbm
+    from nrsls.mac.link_adaptation import LinkAdaptation
+    updates = []
+    real = LinkAdaptation.update
+
+    def update(self, ue, ack, cw=0, tx_rank=None):
+        updates.append(cw)
+        return real(self, ue, ack, cw=cw, tx_rank=tx_rank)
+
+    monkeypatch.setattr(LinkAdaptation, "update", update)
+    monkeypatch.setattr(fbm, "decode_tb", lambda tb, *a, **k: tb.get("cw", 0) > 0)
+    cfg, fb = _small(codebook="svd_rb", cw_mapping="lte", receiver="sic",
+                     harq_adaptive=True, olla_sic_conditional=cond)
+    run_full_buffer_drop(cfg, fb, np.random.default_rng(2))
+    assert 0 in updates
+    # codeword 0 always fails, so codeword 1's loop moves only without the option
+    assert (1 in updates) is (not cond)

@@ -15,6 +15,9 @@ rank is chosen knowing the split.  Variants (``--variants``):
   irc-ideal   MMSE-IRC, ideal link adaptation: each new TB's MCS is the
               highest meeting the BLER target on the SINR it actually gets
   sic-olla    codeword-level MMSE-SIC receiver (CQIs reported for SIC)
+  sic-olla-cond  SIC, OLLA per codeword that skips the transmissions in
+              which an earlier codeword failed (error propagation, not CQI
+              error)
   sic-ideal   SIC with ideal link adaptation (the MCS of a codeword assumes the
               earlier ones are cancelled; whether they decode is not known)
 
@@ -60,8 +63,10 @@ from nrsls.engine.fullbuffer import FullBufferConfig, run_full_buffer_drop  # no
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "results")
 SCHEMES = ("nr", "lte", "per_layer")
-VARIANTS = {"irc-olla": ("irc", False), "irc-ideal": ("irc", True),
-            "sic-olla": ("sic", False), "sic-ideal": ("sic", True)}
+# (receiver, ideal link adaptation, OLLA conditional on the earlier codewords)
+VARIANTS = {"irc-olla": ("irc", False, False), "irc-ideal": ("irc", True, False),
+            "sic-olla": ("sic", False, False), "sic-olla-cond": ("sic", False, True),
+            "sic-ideal": ("sic", True, False)}
 LABEL = {"nr": "NR", "lte": "LTE", "per_layer": "1 CW/layer"}
 
 
@@ -77,12 +82,14 @@ def cases(slots: int, warmup: int) -> dict:
 
 def fb_config(case: str, variant: str, scheme: str, slots: int, warmup: int
               ) -> FullBufferConfig:
-    receiver, ideal = VARIANTS[variant]
+    receiver, ideal, cond = VARIANTS[variant]
     extra = {}
     if receiver != "irc":
         extra["receiver"] = receiver
     if ideal:
         extra["ideal_la"] = True
+    if cond:
+        extra["olla_sic_conditional"] = True
     return FullBufferConfig(**cases(slots, warmup)[case], cw_mapping=scheme, **extra)
 
 
@@ -171,7 +178,7 @@ def summarize(log: list) -> dict:
     out = []
     for g, by_scheme in sorted(groups.items()):
         case, variant, slots, warmup, seed, ues = g
-        base_variant = variant.replace("sic-", "irc-")
+        base_variant = "irc-ideal" if VARIANTS[variant][1] else "irc-olla"
         base = groups.get((case, base_variant, slots, warmup, seed, ues), {}).get("nr", {})
         entry = {"case": case, "variant": variant, "n_slots": slots, "warmup": warmup,
                  "seed": seed, "ue_per_cell": ues, "baseline": f"nr/{base_variant}",

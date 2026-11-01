@@ -64,6 +64,9 @@ def main():
                     help="re-precode retransmissions with the current report")
     ap.add_argument("--receiver", default="irc", choices=["irc", "sic"],
                     help="SU receiver: MMSE-IRC or codeword-level MMSE-SIC")
+    ap.add_argument("--olla-sic-conditional", action="store_true",
+                    help="SIC: a codeword's OLLA skips transmissions whose earlier "
+                         "codeword failed")
     ap.add_argument("--ideal-la", action="store_true",
                     help="reference: MCS from the SINR each new TB actually gets")
     args = ap.parse_args()
@@ -84,7 +87,8 @@ def main():
                               cw_mapping=args.cw_mapping,
                               olla_per_rank=args.olla_per_rank,
                               harq_adaptive=args.harq_adaptive,
-                              receiver=args.receiver, ideal_la=args.ideal_la)
+                              receiver=args.receiver, ideal_la=args.ideal_la,
+                              olla_sic_conditional=args.olla_sic_conditional)
         t0 = time.time()
         r = run_full_buffer(cfg, fb, args.drops, seed=1, n_jobs=args.jobs)
         ue_se[cb] = r["ue_se"]
@@ -111,7 +115,8 @@ def main():
             "csi_period_slots": args.csi_period, "pdcch_symbols": args.pdcch,
             "overhead_re_per_prb": args.overhead_re, "cw_mapping": args.cw_mapping,
             "olla_per_rank": args.olla_per_rank, "harq_adaptive": args.harq_adaptive,
-            "receiver": args.receiver, "ideal_la": args.ideal_la}
+            "receiver": args.receiver, "ideal_la": args.ideal_la,
+            "olla_sic_conditional": args.olla_sic_conditional}
     with open(os.path.join(OUT, f"{args.tag}_full_buffer.json"), "w") as f:
         json.dump({"config": meta, "results": summary,
                    "ue_se": {k: [round(float(x), 5) for x in v] for k, v in ue_se.items()}},

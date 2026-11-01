@@ -118,6 +118,10 @@ class FullBufferConfig:
     # UT reports each codeword's CQI after the earlier ones are cancelled).
     # With one codeword both are MMSE-IRC
     receiver: str = "irc"
+    # SIC: the OLLA loop of a codeword skips the transmissions in which an
+    # earlier codeword failed (its NACK is then error propagation, not CQI
+    # error); the gNB sees every codeword's ACK/NACK
+    olla_sic_conditional: bool = False
     # ideal link adaptation (a reference, SU): every new TB takes the highest
     # MCS meeting target_bler on the SINR it actually gets (OLLA unused)
     ideal_la: bool = False
@@ -300,7 +304,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     if fb.receiver not in ("irc", "sic"):
         raise ValueError("receiver must be 'irc' or 'sic'")
     if fb.mu_mimo and (max_cw > 1 or fb.olla_per_rank or fb.harq_adaptive
-                       or fb.receiver != "irc" or fb.ideal_la):
+                       or fb.receiver != "irc" or fb.ideal_la or fb.olla_sic_conditional):
         raise ValueError("multi-codeword mappings, per-rank OLLA, adaptive HARQ, SIC "
                          "and ideal link adaptation are SU-MIMO only")
     sic = fb.receiver == "sic" and max_cw > 1
@@ -547,6 +551,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                         plan = sic_layer_sinr(g, tb["layers"], earlier)
                 ideal_mcs(tb, plan, nrb_f[fm], rb_per_rbg, n_re, fb.mcs_table,
                           fb.target_bler)
+            propagated = ("tx" in tb and sic
+                          and len(tx_sic[tb["tx"]][1]) < len(tx_sic[tb["tx"]][2]))
             ok = decode_tb(tb, hw[u], fm, rbg_f, nrb_f, rng, sinr)
             if "tx" in tb and sic:
                 tx_sic[tb["tx"]][2].extend(tb["layers"])
@@ -554,7 +560,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                     tx_sic[tb["tx"]][1].extend(tb["layers"])
             if first:
                 cw = tb.get("cw", 0)
-                (la_mu if tb.get("mu") else la).update(u, ok, cw=cw, tx_rank=tb["rank"])
+                if not (propagated and fb.olla_sic_conditional):
+                    (la_mu if tb.get("mu") else la).update(u, ok, cw=cw, tx_rank=tb["rank"])
                 if slot >= fb.warmup_slots:
                     n_mu_first += int(bool(tb.get("mu")))
                 pf_avg[u] += tb["bits"] / fb.pf_window_slots
