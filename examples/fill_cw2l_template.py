@@ -8,7 +8,9 @@ both with OLLA per codeword.  Results go to the 'Type II codebook' block
 Type I and 'Other precoding scheme' blocks and the rows for Alt1 with a
 different modulation order per layer stay empty (not evaluated).  Alt1 with
 the same modulation order is the NR mapping, the baseline (0 %).  Gains are
-written as fractions with a 0.0 % format.  Rows are found by their labels.
+written as fractions with a 0.0 % format.  Rows are found by their labels
+(read with openpyxl); the values are written by patching the sheet's XML, so
+the rest of the workbook is left exactly as it was.
 
     python examples/fill_cw2l_template.py [results/cw2lm_ftp.json] \\
         [6GR_DL_CW2L_template_v003.xlsx]
@@ -18,7 +20,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
+import zipfile
+from xml.sax.saxutils import escape
 
 import openpyxl
 
@@ -116,9 +121,10 @@ def _text(v) -> str:
     return " ".join(str(v).split()) if v is not None else ""
 
 
-def fill(summ: dict, path: str) -> None:
-    wb = openpyxl.load_workbook(path)
-    ws = wb[SHEET]
+def plan(summ: dict, path: str) -> dict:
+    """{cell reference: value} to write: str for text, float for a gain
+    (written as a fraction with a 0.0 % format).  Rows are found by their labels."""
+    ws = openpyxl.load_workbook(path)[SHEET]
     conf = {(e["case"], e["load"]): e for e in summ["configurations"]}
 
     # measured RU of NR per case and load, for the remarks
@@ -141,10 +147,8 @@ def fill(summ: dict, path: str) -> None:
     traffic = ("FTP model 3: 0.5 Mbyte files, Poisson arrivals per UE; arrival rates set so "
                "that NR with MMSE-IRC has 20 / 50 / 70 % RU in each precoding case")
 
-    for col_key, col in COLS.items():
-        ws[f"{col}2"] = {"irc-olla": "nrsls, MMSE-IRC",
-                         "sic-olla": "nrsls, CW-level SIC"}[col_key]
-
+    cells = {f"{col}2": {"irc-olla": "nrsls, MMSE-IRC", "sic-olla": "nrsls, CW-level SIC"}[k]
+             for k, col in COLS.items()}
     a_label = b_label = block = metric = alt = None
     for r in range(3, ws.max_row + 1):
         a, b, c = (_text(ws.cell(r, i).value) for i in (1, 2, 3))
@@ -161,7 +165,7 @@ def fill(summ: dict, path: str) -> None:
         if block is None:                                  # assumption rows
             vals = _assumption(b_label if b else a_label, a_label, traffic, remarks)
             for k, v in vals.items():
-                ws[f"{COLS[k]}{r}"] = v
+                cells[f"{COLS[k]}{r}"] = v
             continue
         if block not in BLOCKS:
             continue
@@ -172,17 +176,168 @@ def fill(summ: dict, path: str) -> None:
             continue
         e = conf.get((BLOCKS[block], load))
         for k, col in COLS.items():
-            cell = ws[f"{col}{r}"]
             if alt == "nr":
-                cell.value = 0.0
+                cells[f"{col}{r}"] = 0.0
             elif e and alt in e["variants"].get(k, {}):
                 g = e["variants"][k][alt].get("gain_vs_nr_pct")
                 if g:
-                    cell.value = round(g[metric] / 100, 4)
+                    cells[f"{col}{r}"] = round(g[metric] / 100, 6)
+    return cells
+
+
+# --- writing: patch the sheet XML in place ------------------------------------
+# openpyxl would rewrite the whole package: it expands row styles into tens of
+# thousands of cells and drops parts it does not know (custom XML, sensitivity
+# label metadata, printer settings).  So only the sheet's XML and styles.xml are
+# changed here, and every other part of the package is copied as it is.
+
+def _colnum(letters: str) -> int:
+    n = 0
+    for ch in letters:
+        n = 26 * n + ord(ch) - 64
+    return n
+
+
+def _split_ref(ref: str) -> tuple:
+    m = re.fullmatch(r"([A-Z]+)(\d+)", ref)
+    return m.group(1), int(m.group(2))
+
+
+def _attr(tag: str, name: str):
+    m = re.search(rf'\s{name}="([^"]*)"', tag)
+    return m.group(1) if m else None
+
+
+def _set_attr(tag: str, name: str, value: str) -> str:
+    if _attr(tag, name) is not None:
+        return re.sub(rf'(\s{name}=")[^"]*(")', rf"\g<1>{value}\g<2>", tag, count=1)
+    return re.sub(r"\s*(/?>)$", rf' {name}="{value}"\1', tag, count=1)
+
+
+def _sheet_part(z: zipfile.ZipFile, sheet: str) -> str:
+    wb = z.read("xl/workbook.xml").decode()
+    tag = next(t for t in re.findall(r"<sheet\s[^>]*>", wb)
+               if _attr(t, "name") == escape(sheet, {'"': "&quot;"}))
+    rid = re.search(r'\sr:id="([^"]+)"', tag).group(1)
+    rels = z.read("xl/_rels/workbook.xml.rels").decode()
+    rel = next(t for t in re.findall(r"<Relationship\s[^>]*>", rels) if _attr(t, "Id") == rid)
+    target = _attr(rel, "Target")
+    return target.lstrip("/") if target.startswith("/") else "xl/" + target
+
+
+class _Styles:
+    """Adds, per existing cell style, a copy with the 0.0 % number format."""
+
+    def __init__(self, xml: str):
+        self.xml, self.pct = xml, {}
+        ids = [int(i) for i in re.findall(r'<numFmt\s[^>]*numFmtId="(\d+)"', xml)]
+        found = re.search(r'<numFmt\s[^>]*numFmtId="(\d+)"[^>]*formatCode="0\.0%"', xml)
+        if found:
+            self.fmt = int(found.group(1))
+        else:
+            self.fmt = max(ids + [163]) + 1
+            nf = f'<numFmt numFmtId="{self.fmt}" formatCode="0.0%"/>'
+            if re.search(r"<numFmts\b[^>]*/>", xml):          # empty: <numFmts count="0"/>
+                self.xml = re.sub(r"<numFmts\b[^>]*/>", f'<numFmts count="1">{nf}</numFmts>',
+                                  self.xml, count=1)
+            elif "<numFmts" in xml:
+                self.xml = re.sub(r"</numFmts>", nf + "</numFmts>", self.xml, count=1)
+                self.xml = re.sub(r'(<numFmts\s+count=")(\d+)',
+                                  lambda m: m.group(1) + str(int(m.group(2)) + 1), self.xml, 1)
+            else:                               # numFmts is the first child of styleSheet
+                self.xml = re.sub(r"(<styleSheet\b[^>]*>)", rf'\1<numFmts count="1">{nf}</numFmts>',
+                                  self.xml, count=1)
+
+    def percent(self, s: int) -> int:
+        if s in self.pct.values():              # already one of the added 0.0 % styles
+            return s
+        if s not in self.pct:
+            m = re.search(r'<cellXfs\s+count="(\d+)"\s*>(.*?)</cellXfs>', self.xml, re.S)
+            xfs = re.findall(r"<xf\b[^>]*/>|<xf\b[^>]*>.*?</xf>", m.group(2), re.S)
+            head = re.match(r"<xf\b[^>]*?/?>", xfs[s]).group(0)
+            new_head = _set_attr(_set_attr(head, "numFmtId", str(self.fmt)),
+                                 "applyNumberFormat", "1")
+            xf = new_head + xfs[s][len(head):]
+            body = m.group(2) + xf
+            self.xml = (self.xml[:m.start()] + f'<cellXfs count="{len(xfs) + 1}">' + body
+                        + "</cellXfs>" + self.xml[m.end():])
+            self.pct[s] = len(xfs)
+        return self.pct[s]
+
+
+def _patch_sheet(xml: str, cells: dict, styles: _Styles) -> str:
+    by_row = {}
+    for ref, v in cells.items():
+        col, row = _split_ref(ref)
+        by_row.setdefault(row, []).append((_colnum(col), ref, v))
+    max_col = 0
+    for row, items in sorted(by_row.items()):
+        m = re.search(rf'<row\s+r="{row}"(?=[\s>/])[^>]*?(?:/>|>(.*?)</row>)', xml, re.S)
+        if m is None:
+            raise ValueError(f"row {row} not in the sheet")
+        open_tag = re.match(r"<row\b[^>]*?/?>", m.group(0)).group(0)
+        content = m.group(1) or ""
+        for cn, ref, v in sorted(items):
+            max_col = max(max_col, cn)
+            cm = re.search(rf'<c\s+r="{ref}"(?=[\s>/])[^>]*?(?:/>|>.*?</c>)', content, re.S)
+            if cm:
+                s = _attr(re.match(r"<c\b[^>]*?/?>", cm.group(0)).group(0), "s")
+            else:                    # new cell: style of the nearest cell to its left
+                left = [c for c in re.findall(r"<c\b[^>]*?/?>", content)
+                        if _colnum(_split_ref(_attr(c, "r"))[0]) < cn]
+                s = _attr(left[-1], "s") if left else _attr(open_tag, "s")
+            if isinstance(v, str):
+                sa = f' s="{s}"' if s is not None else ""
+                text = escape(v)
+                new = (f'<c r="{ref}"{sa} t="inlineStr"><is><t xml:space="preserve">{text}'
+                       f"</t></is></c>")
             else:
-                continue
-            cell.number_format = "0.0%"
-    wb.save(path)
+                new = f'<c r="{ref}" s="{styles.percent(int(s or 0))}"><v>{float(v)!r}</v></c>'
+            if cm:
+                content = content[:cm.start()] + new + content[cm.end():]
+            else:
+                after = [c for c in re.finditer(r'<c\s+r="([A-Z]+)\d+"', content)
+                         if _colnum(c.group(1)) > cn]
+                pos = after[0].start() if after else len(content)
+                content = content[:pos] + new + content[pos:]
+        tag = open_tag.rstrip("/>").rstrip() + ">" if open_tag.endswith("/>") else open_tag
+        spans = _attr(tag, "spans")
+        if spans and ":" in spans:
+            lo, hi = (int(x) for x in spans.split(":"))
+            tag = _set_attr(tag, "spans", f"{min(lo, min(i[0] for i in items))}:"
+                                          f"{max(hi, max(i[0] for i in items))}")
+        xml = xml[:m.start()] + tag + content + "</row>" + xml[m.end():]
+    dm = re.search(r'<dimension\s+ref="([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?"', xml)
+    if dm and dm.group(3) and _colnum(dm.group(3)) < max_col:
+        letters, n = "", max_col
+        while n:
+            n, r = divmod(n - 1, 26)
+            letters = chr(65 + r) + letters
+        xml = xml[:dm.start(3)] + letters + xml[dm.end(3):]
+    return xml
+
+
+def write_cells(path: str, cells: dict, sheet: str = SHEET) -> None:
+    """Write ``cells`` into ``sheet`` of the workbook at ``path`` in place,
+    changing only that sheet's XML and the styles."""
+    with zipfile.ZipFile(path) as z:
+        part = _sheet_part(z, sheet)
+        styles = _Styles(z.read("xl/styles.xml").decode())
+        sheet_xml = _patch_sheet(z.read(part).decode(), cells, styles)
+        entries = [(i, z.read(i.filename)) for i in z.infolist()]
+    tmp = path + ".tmp"
+    with zipfile.ZipFile(tmp, "w") as out:
+        for info, data in entries:
+            if info.filename == part:
+                data = sheet_xml.encode()
+            elif info.filename == "xl/styles.xml":
+                data = styles.xml.encode()
+            out.writestr(info, data, compress_type=info.compress_type)
+    os.replace(tmp, path)
+
+
+def fill(summ: dict, path: str) -> None:
+    write_cells(path, plan(summ, path))
 
 
 def main() -> int:

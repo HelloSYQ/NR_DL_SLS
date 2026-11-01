@@ -10,6 +10,8 @@ This evaluates three ways of mapping codewords to layers for SU-MIMO transmissio
 
 The entries are the layers per codeword. Layers are in precoder-column order, which is strongest first for both the SVD and the eType-II precoders, so the LTE split puts the strongest layer alone on codeword 0 at rank 3. The module is the one described in [cw2lm-sls.md](cw2lm-sls.md). Each codeword has its own CQI, MCS, OLLA loop, TB and HARQ process, and the rank is chosen knowing the split. `nr`, `lte` and `per_layer` are names for its `alt1`, `alt2` and `alt3`.
 
+The same mappings with FTP model 3 traffic at 20, 50 and 70 % resource utilisation are in [cw2lm-ftp.md](cw2lm-ftp.md).
+
 ## Result
 
 ![Gain of LTE style and one codeword per layer over NR](../results/cw2lm_rank4.png)

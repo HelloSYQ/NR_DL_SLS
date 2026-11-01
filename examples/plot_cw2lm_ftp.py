@@ -64,7 +64,7 @@ def plot(summ: dict, path: str) -> None:
         finite = [x for vals in panels for _, v, per, _ in vals for x in [v, *per]
                   if np.isfinite(x)]
         span = max([max(finite, default=0) - min(finite + [0], default=0), 2.0])
-        lim = max(finite + [1.0]) + 0.2 * span
+        lim = max(finite + [1.0]) + 0.34 * span      # room for the receiver labels
         lo = min(finite + [0.0]) - (0.2 * span if min(finite + [0.0]) < 0 else 0.0)
         for col in range(len(CASES)):
             ax = axes[row, col]

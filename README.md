@@ -58,7 +58,16 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   about 2 % otherwise), and 6–9 % with ideal link adaptation; one codeword
   per layer gains no more and loses 3–6 % at the 5th percentile. See
   [`docs/cw2lm-rank4.md`](docs/cw2lm-rank4.md).
-- **Next:** FTP traffic and load.
+- **The same mappings with FTP model 3 traffic at 20 / 50 / 70 % RU**
+  (`FullBufferConfig.traffic='ftp3'`, `python examples/cw2lm_ftp_eval.py`),
+  with eType-II and reciprocity-based (sub-band SVD) precoding, which fills
+  the "SLS rank 1-4" sheet of `6GR_DL_CW2L_template_v003.xlsx`
+  (`examples/fill_cw2l_template.py`). Bursty traffic magnifies the
+  difference: with MMSE-IRC, LTE style loses 6–10 % mean UPT and one codeword
+  per layer 15–21 % (12–27 % at the 5th percentile); with a codeword-level
+  SIC receiver and plain OLLA, LTE style gains 4–9 % mean UPT and is about
+  neutral to +4 % at the 5th percentile. See
+  [`docs/cw2lm-ftp.md`](docs/cw2lm-ftp.md).
 
 ## Guided tour
 
@@ -109,6 +118,11 @@ python examples/cw2lm_sls.py --drops 2 --slots 160 --jobs 4
 python examples/run_full_buffer.py --preset du-a --cw-mapping lte --receiver sic \
     --olla-sic-conditional --harq-adaptive --codebooks svd --drops 1 --tag du_lte_sic
 python examples/cw2lm_rank4_eval.py --summary-only --plot results/cw2lm_rank4.png
+
+# the same with FTP model 3 traffic, and the 6GR CW2L template
+python examples/cw2lm_ftp_eval.py --summary-only --log "$(ls results/ftp_parts/*.jsonl | paste -sd,)"
+python examples/plot_cw2lm_ftp.py
+python examples/fill_cw2l_template.py results/cw2lm_ftp.json 6GR_DL_CW2L_template_v003.xlsx
 
 # tests
 python -m pytest
