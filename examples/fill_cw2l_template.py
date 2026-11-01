@@ -122,9 +122,10 @@ def fill(summ: dict, path: str) -> None:
     conf = {(e["case"], e["load"]): e for e in summ["configurations"]}
 
     # measured RU of NR per case and load, for the remarks
-    ru = {c: "/".join(f"{100 * conf[(c, ld)]['variants']['irc-olla']['nr']['ru']:.0f}"
-                      for ld in ("20", "50", "70") if (c, ld) in conf)
-          for c in BLOCKS.values()}
+    def nr_ru(c, ld):
+        s = conf.get((c, ld), {}).get("variants", {}).get("irc-olla", {}).get("nr")
+        return f"{100 * s['ru']:.0f}" if s else "n/a"
+    ru = {c: "/".join(nr_ru(c, ld) for ld in ("20", "50", "70")) for c in BLOCKS.values()}
     drops = sorted({d for e in summ["configurations"]
                     for v in e["variants"].values() for s in v.values() for d in s["drops"]})
     e0 = summ["configurations"][0]
