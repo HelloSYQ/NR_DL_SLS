@@ -26,7 +26,8 @@ from nrsls.plots.cdf import (AXIS, INK, INK_2, MUTED, SERIES, SURFACE,  # noqa: 
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "results")
 VARIANTS = (("irc-olla", "MMSE-IRC\nOLLA"), ("irc-ideal", "MMSE-IRC\nideal LA"),
-            ("sic-olla", "SIC\nOLLA"), ("sic-ideal", "SIC\nideal LA"))
+            ("sic-olla", "SIC\nOLLA"), ("sic-olla-cond", "SIC\ncond. OLLA"),
+            ("sic-ideal", "SIC\nideal LA"))
 SCHEMES = (("lte", "LTE style"), ("per_layer", "1 CW per layer"))
 CASES = (("etype2_20ms", "eType-II, CSI every 20 ms, 4 ms old"),
          ("svd_2ms", "Wideband SVD, CSI every 2 ms, fresh"))
@@ -80,7 +81,7 @@ def _panel_values(cfgs: dict, case: str, metric: str) -> list:
 
 def plot(summ: dict, log: list | None, path: str) -> None:
     cfgs = _configs(summ)
-    fig, axes = plt.subplots(len(METRICS), len(CASES), figsize=(9.6, 6.4),
+    fig, axes = plt.subplots(len(METRICS), len(CASES), figsize=(10.4, 6.4),
                              facecolor=SURFACE, sharey="row", squeeze=False)
     for row, (metric, metric_label) in enumerate(METRICS):
         panels = [_panel_values(cfgs, case, metric) for case, _ in CASES]
