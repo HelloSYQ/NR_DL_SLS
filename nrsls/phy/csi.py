@@ -26,6 +26,10 @@ covariance of the measurement slot (TS 38.214 clause 5.2.2.1).
     split of ranks 5-8, {1,1}, {1,2}, {2,2}; 4: one codeword per layer).
     Each codeword gets its own wideband and sub-band CQI from the SINRs of
     its own layers, as TS 38.214 reports for two codewords.
+  * SIC (``sic``): a UT with a codeword-level MMSE-SIC receiver computes the
+    CQI of codeword k from the SINRs of its layers once the layers of
+    codewords 0..k-1 are cancelled (assumed decoded); codeword 0, and a
+    single codeword, see plain MMSE-IRC.
   * RI: the rank that maximises sum_CW layers(CW) x spectral efficiency of
     the codeword's wideband CQI, i.e. rank x SE(CQI) with one codeword.
 """
@@ -93,11 +97,13 @@ class CSIProcessor:
                  mcs_table: int = 2, target_bler: float = 0.1,
                  n_re_per_rb: int = 144, n_beams: int = 4,
                  score_step: int = 1, etype2_combo: int = 6,
-                 pmi_subband: bool = True, max_codewords: int = 1):
+                 pmi_subband: bool = True, max_codewords: int = 1,
+                 sic: bool = False):
         self.n1, self.n2, self.o1, self.o2 = n1, n2, o1, o2
         self.codebook = codebook
         self.max_rank = max_rank
         self.max_codewords = max_codewords
+        self.sic = sic
         self.cqi_table = mcs_tables.MCS_TO_CQI_TABLE[mcs_table]
         self.target_bler = target_bler
         self.n_re_per_rb = n_re_per_rb
@@ -187,6 +193,19 @@ class CSIProcessor:
                      for g, q in zip(groups, cqi))
         return groups, cqi, metric
 
+    def _layer_sinr(self, g, rank):
+        """Per-layer SINR (F, r) the CQIs are computed from, for the whitened
+        effective channel g = H~ W (F, U, r): MMSE-IRC over all layers, or
+        with ``sic`` each codeword's layers after the earlier codewords are
+        cancelled."""
+        groups = layer_groups(rank, self.max_codewords) if self.sic else ()
+        if len(groups) < 2:
+            return mmse_sinr(g)
+        out = np.empty(g.shape[:-2] + (rank,))
+        for grp in groups:              # contiguous groups, decoded in order
+            out[..., grp] = mmse_sinr(g[..., grp[0]:])[..., :len(grp)]
+        return out
+
     def _precoder(self, hw, subband_of_f, rank):
         """(w, pmi, per-layer SINR (F, r), PMI bits) of one rank, or None if
         the codebook does not support the rank."""
@@ -195,7 +214,7 @@ class CSIProcessor:
             if not self._et2.supports(rank):
                 return None
             w, knz = self._et2.derive(hw, subband_of_f, rank)
-            return (w, (), mmse_sinr(hw @ w[subband_of_f]),
+            return (w, (), self._layer_sinr(hw @ w[subband_of_f], rank),
                     self._et2.payload_bits(rank, knz))
         if self.codebook == "svd":
             cov = np.einsum("fus,fut->st", np.conj(hw), hw)
@@ -219,7 +238,7 @@ class CSIProcessor:
             bits = self._type1_bits(rank, w.shape[0] if w.ndim == 3 else 1)
         w_f = (w[subband_of_f] if (w.ndim == 3 and self.codebook in ("type1", "svd_sb"))
                else w)
-        return w, pmi, mmse_sinr(hw @ w_f), bits                   # sinr (F, r)
+        return w, pmi, self._layer_sinr(hw @ w_f, rank), bits      # sinr (F, r)
 
     def select(self, hw: np.ndarray, subband_of_f: np.ndarray, rb_per_f: int,
                slot: int) -> CSIReport:

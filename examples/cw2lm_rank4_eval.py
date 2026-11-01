@@ -116,11 +116,14 @@ def _key(rec) -> tuple:
             rec["warmup"], rec["seed"], rec.get("ue_per_cell"))
 
 
-def load_log(path: str) -> list:
-    if not os.path.exists(path):
-        return []
-    with open(path) as fh:
-        return [json.loads(line) for line in fh if line.strip()]
+def load_log(paths: str) -> list:
+    """Records of the comma-separated JSON-lines logs (missing ones skipped)."""
+    out = []
+    for path in paths.split(","):
+        if os.path.exists(path):
+            with open(path) as fh:
+                out += [json.loads(line) for line in fh if line.strip()]
+    return out
 
 
 # --- summary ---------------------------------------------------------------
@@ -229,7 +232,9 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--ues", type=int, default=None, help="UTs per cell (default: preset)")
     ap.add_argument("--jobs", type=int, default=4)
-    ap.add_argument("--log", default=os.path.join(OUT, "cw2lm_rank4_runs.jsonl"))
+    ap.add_argument("--log", default=os.path.join(OUT, "cw2lm_rank4_runs.jsonl"),
+                    help="JSON-lines log(s), comma-separated: new drops are appended "
+                         "to the first, all are read")
     ap.add_argument("--out", default=os.path.join(OUT, "cw2lm_rank4.json"))
     ap.add_argument("--plot", default=None, help="figure path (e.g. results/cw2lm_rank4.png)")
     ap.add_argument("--summary-only", action="store_true")
@@ -253,14 +258,19 @@ def main() -> int:
         tasks.sort(key=lambda t: (t[0] != "svd_2ms", t[2] == "nr"))
         print(f"{len(tasks)} drop runs to do ({len(log)} already in {args.log})", flush=True)
         commit = _commit()
-        os.makedirs(os.path.dirname(os.path.abspath(args.log)), exist_ok=True)
+        log_out = args.log.split(",")[0]
+        os.makedirs(os.path.dirname(os.path.abspath(log_out)), exist_ok=True)
         t0 = time.time()
         with ProcessPoolExecutor(max_workers=args.jobs) as ex:
             for fut in as_completed([ex.submit(_worker, t) for t in tasks]):
                 rec = fut.result()
                 rec["commit"] = commit
-                with open(args.log, "a") as fh:
-                    fh.write(json.dumps(rec) + "\n")
+                # one write() per record: safe with another runner appending
+                fd = os.open(log_out, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+                try:
+                    os.write(fd, (json.dumps(rec) + "\n").encode())
+                finally:
+                    os.close(fd)
                 log.append(rec)
                 print(f"{rec['case']}/{rec['variant']}/{rec['scheme']} drop {rec['drop']}: "
                       f"cell SE {rec['cell_se']:.3f}, BLER {rec['bler_first']:.3f} "

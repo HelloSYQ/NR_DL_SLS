@@ -10,6 +10,12 @@ precoder, and each has its own MCS, TBS (TS 38.214 5.1.3.2 with the
 codeword's layers), OLLA loop and HARQ process.  A retransmission resends
 the failed codewords on their layers and refills the decoded ones with new
 TBs (each TB has its own NDI), on the same RBGs, rank and precoder.
+
+Two references for the codeword-mapping study: a codeword-level SIC
+receiver (:func:`sic_layer_sinr`: the codewords of a transmission are
+decoded in index order and each one that decodes is cancelled) and ideal
+link adaptation (:func:`ideal_mcs`: the MCS is chosen on the SINR the TB
+actually gets).
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ from nrdlsim import mcs_tables
 from nrdlsim import tbs as tbs_mod
 from nrdlsim.link_abstraction import bler_from_effective_sinr, effective_sinr_miesm
 
+from ..mac.link_adaptation import mcs_required_sinr_db
 from ..phy.sinr import mmse_sinr
 
 
@@ -84,6 +91,41 @@ def new_txs(la, u: int, cell: int, rep, sinr_sb: np.ndarray, rbgs: np.ndarray,
                groups=rep.groups, cw_sinr=sinr_sb[:, rbgs], tx=tx_id)
     return [cw_tb(la, ref, k, rb_per_rbg, n_re, mcs_table, slot, lead=k == 0)
             for k in range(len(rep.groups))]
+
+
+def sic_layer_sinr(g: np.ndarray, layers, cancelled) -> np.ndarray:
+    """MMSE SINR (Fsel, len(layers)) of ``layers`` of the whitened effective
+    channel g (Fsel, U, r) once the layers ``cancelled`` (decoded codewords)
+    are removed: ideal cancellation, the remaining layers are interference.
+    No cancelled layers is plain MMSE-IRC."""
+    keep = [l for l in range(g.shape[-1]) if l not in set(cancelled)]
+    sinr = mmse_sinr(g[..., keep])
+    return sinr[:, [keep.index(l) for l in layers]]
+
+
+def ideal_mcs(tb: dict, sinr: np.ndarray, nrb: np.ndarray, rb_per_rbg: np.ndarray,
+              n_re: int, mcs_table: int, target_bler: float) -> None:
+    """Ideal link adaptation of a first transmission: set the TB's MCS and TBS
+    to the highest MCS whose BLER on the per-layer SINRs it actually gets,
+    ``sinr`` (Fsel, layers) on frequency points of ``nrb`` RBs, meets
+    ``target_bler`` (the decoder's own MIESM and waterfall, no prediction
+    error); MCS 0 if none does."""
+    n_layers = sinr.shape[1]
+    n_alloc = int(rb_per_rbg[tb["rbgs"]].sum())
+    re_sinr = np.repeat(sinr, nrb, axis=0)
+    reqs = mcs_required_sinr_db(mcs_table, n_layers, target_bler, n_re, max(n_alloc, 1))
+    eff, mcs = {}, 0
+    for i in range(len(reqs) - 1, -1, -1):
+        qm = mcs_tables.get_mcs(i, mcs_table).modulation_order
+        if qm not in eff:
+            eff[qm] = effective_sinr_miesm(re_sinr, qm)
+        if eff[qm] >= reqs[i] - 1e-9:
+            mcs = i
+            break
+    info = mcs_tables.get_mcs(mcs, mcs_table)
+    tb["info"] = info
+    tb["bits"] = tbs_mod.compute_tbs(n_re, n_alloc, info.modulation_order,
+                                     info.target_code_rate, n_layers)
 
 
 def harq_units(tbs: list) -> list:
