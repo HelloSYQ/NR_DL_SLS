@@ -99,8 +99,9 @@ class FullBufferConfig:
     # by default; True charges double-symbol + 1 additional pair (48 REs)
     mu_dmrs_overhead: bool = False
     mu_precoder: str = "rzf"          # 'rzf' or 'zf' on the reports
-    # codeword-to-layer mapping (SU-MIMO): 'alt1' (NR, 1 CW up to rank 4),
-    # 'alt2' (<= 2 CW), 'alt3' (one CW per layer)
+    # codeword-to-layer mapping (SU-MIMO): 'alt1' = 'nr' (1 CW up to rank 4),
+    # 'alt2' = 'lte' (<= 2 CW, TS 36.211 Table 6.3.3.2-1), 'alt3' =
+    # 'per_layer' (one CW per layer)
     cw_mapping: str = "alt1"
     olla_per_rank: bool = False       # OLLA loop per UT, rank and codeword
     # SU retransmissions: False keeps the first transmission's precoder (and
@@ -109,7 +110,12 @@ class FullBufferConfig:
     harq_adaptive: bool = False
 
 
-CW_MAPPINGS = {"alt1": 1, "alt2": 2, "alt3": 4}
+# maximum codewords per transmission.  Up to rank 4 the three splits are
+#   'nr'        one codeword on all layers (TS 38.211 Table 7.3.1.3-1);
+#   'lte'       {1} / {1,1} / {1,2} / {2,2} for ranks 1-4, the LTE mapping of
+#               TS 36.211 Table 6.3.3.2-1 (and the NR split of ranks 5-8);
+#   'per_layer' one codeword per layer.
+CW_MAPPINGS = {"alt1": 1, "alt2": 2, "alt3": 4, "nr": 1, "lte": 2, "per_layer": 4}
 
 
 @dataclass

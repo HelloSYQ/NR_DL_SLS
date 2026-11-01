@@ -55,8 +55,10 @@ def main():
     ap.add_argument("--pdcch", type=int, default=1, help="PDCCH symbols")
     ap.add_argument("--overhead-re", type=int, default=0,
                     help="CSI-RS/TRS/SSB REs per PRB and slot")
-    ap.add_argument("--cw-mapping", default="alt1", choices=["alt1", "alt2", "alt3"],
-                    help="codewords: alt1 NR (1 up to rank 4), alt2 <= 2, alt3 one per layer")
+    ap.add_argument("--cw-mapping", default="alt1",
+                    choices=["alt1", "alt2", "alt3", "nr", "lte", "per_layer"],
+                    help="codewords: alt1/nr (1 up to rank 4), alt2/lte (<= 2, "
+                         "TS 36.211 Table 6.3.3.2-1), alt3/per_layer (one per layer)")
     ap.add_argument("--olla-per-rank", action="store_true", help="OLLA per UT, rank and CW")
     ap.add_argument("--harq-adaptive", action="store_true",
                     help="re-precode retransmissions with the current report")
