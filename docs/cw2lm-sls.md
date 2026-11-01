@@ -1,5 +1,7 @@
 # Codeword-to-layer mapping in the system simulator
 
+> Follow-up: [cw2lm-rank4.md](cw2lm-rank4.md) evaluates NR, LTE style and one codeword per layer up to rank 4 with converged OLLA on three drops, and adds a codeword-level SIC receiver and ideal link adaptation as references.
+
 The full-buffer SU-MIMO loop can carry more than one codeword per UT (`FullBufferConfig.cw_mapping`). Each codeword has its own CQI, MCS, OLLA loop and HARQ process. The CSI-stage probe ([cw2lm-sls-probe.md](cw2lm-sls-probe.md)) only estimated what more codewords could gain; this runs them end to end.
 
 | `cw_mapping` | Codewords | Ranks 1 / 2 / 3 / 4 |
