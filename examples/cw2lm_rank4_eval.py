@@ -149,6 +149,7 @@ def _stats(recs: list) -> dict:
         "cell_se_per_drop": [r["cell_se"] for r in recs],
         "ue_se_p5": float(np.percentile(ue, 5)),
         "ue_se_p50": float(np.percentile(ue, 50)),
+        "ue_se_p95": float(np.percentile(ue, 95)),
         "ue_se_mean_by_geometry_tercile": [float(ue[tercile == t].mean()) for t in range(3)],
         "bler_first": float(np.mean([r["bler_first"] for r in recs])),
         "bler_first_cw": [float(np.mean([r["bler_first_cw"][k] for r in recs
@@ -199,6 +200,7 @@ def summarize(log: list) -> dict:
                                          for d in common],
                     "ue_se_p5": _pct(m["ue_se_p5"], b["ue_se_p5"]),
                     "ue_se_p50": _pct(m["ue_se_p50"], b["ue_se_p50"]),
+                    "ue_se_p95": _pct(m["ue_se_p95"], b["ue_se_p95"]),
                     "ue_se_by_geometry_tercile": [
                         _pct(x, y) for x, y in zip(m["ue_se_mean_by_geometry_tercile"],
                                                    b["ue_se_mean_by_geometry_tercile"])],
@@ -214,15 +216,17 @@ def print_summary(summ: dict) -> None:
         print(f"\n== {e['case']}, {e['variant']}, {e['n_slots']} slots "
               f"({e['warmup']} warm-up), baseline {e['baseline']}")
         print("  scheme      drops  cell SE  gain [per drop]          UT p5   gain  "
-              "UT p50   gain  BLER per CW                  rank 1-4 %          retx")
+              "UT p50   gain  UT p95   gain  BLER per CW                  rank 1-4 %          retx")
         for s, st in e["schemes"].items():
             g = st.get("gain_vs_nr_pct")
             gs = (f"{g['cell_se']:+5.1f}% [{', '.join(f'{x:+.1f}' for x in g['cell_se_per_drop'])}]"
                   if g else "")
             p5 = f"{g['ue_se_p5']:+5.1f}%" if g else ""
             p50 = f"{g['ue_se_p50']:+5.1f}%" if g else ""
+            p95 = f"{g['ue_se_p95']:+5.1f}%" if g else ""
             print(f"  {s:10s}  {len(st['drops']):5d}  {st['cell_se']:7.3f}  {gs:24s} "
                   f"{st['ue_se_p5']:6.3f} {p5:>6s}  {st['ue_se_p50']:6.3f} {p50:>6s}  "
+                  f"{st['ue_se_p95']:6.3f} {p95:>6s}  "
                   f"{str([round(b, 3) for b in st['bler_first_cw']]):28s} "
                   f"{str([round(100 * h) for h in st['rank_hist']]):18s} "
                   f"{st['retx_rbg_fraction']:.3f}")

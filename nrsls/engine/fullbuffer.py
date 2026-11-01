@@ -37,8 +37,9 @@ TB's MCS is the highest meeting the BLER target on the SINR it actually
 gets; with SIC, on its SINR once the earlier codewords are cancelled).
 
 KPIs after ``warmup_slots``: UT throughput, UT spectral efficiency
-(throughput / occupied bandwidth), cell spectral efficiency (sum throughput /
-(cells x bandwidth)), first-transmission BLER, rank and MCS statistics.
+(throughput / ``channel_bandwidth_hz``, or the occupied bandwidth if that is
+None), cell spectral efficiency (sum throughput / (cells x the same
+bandwidth)), first-transmission BLER, rank and MCS statistics.
 """
 
 from __future__ import annotations

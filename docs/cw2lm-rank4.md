@@ -14,11 +14,11 @@ The entries are the layers per codeword. Layers are in precoder-column order, wh
 
 ![Gain of LTE style and one codeword per layer over NR](../results/cw2lm_rank4.png)
 
-- **With a linear (MMSE-IRC) receiver, NR's single codeword is the best of the three.** With OLLA, LTE style loses 0.7–1.1 % of cell SE and 1.2–3.5 % at the 5th percentile, and one codeword per layer loses 1.6–1.8 % and 3.8–4.1 %. Every drop has the same sign.
+- **With a linear (MMSE-IRC) receiver, NR's single codeword is the best of the three.** With OLLA, LTE style loses 0.7–1.1 % of cell SE and 1.2–3.5 % at the 5th percentile, and one codeword per layer loses 1.6–1.8 % and 3.8–4.1 %. Every drop has the same sign. The top UTs are unaffected (95th percentile −0.8 to +0.5 %).
 - **A separate MCS per layer group is worth 1.3–2.0 %, and per-codeword link adaptation costs more than that.** With ideal link adaptation for every scheme, LTE style gains 1.3–1.6 % over NR and one codeword per layer 1.7–2.0 %. With OLLA they lose 2.0–3.6 points more than NR does: the codewords on the weakest layers run above the BLER target, and twice as many RBGs carry retransmissions.
 - **A codeword-level SIC receiver is what makes more codewords pay.** SIC raises the reported rank: rank 4 goes from 2–7 % of transmissions for NR to 14–31 % with LTE style and 28–49 % with one codeword per layer. With ideal link adaptation, LTE style then gains 6.2–8.7 % and one codeword per layer 8.1–12.2 %, at every geometry.
 - **How much of that survives depends on how OLLA treats error propagation.** When a codeword fails, the later codewords of the transmission fail too, 62 % of the time against 5 % otherwise. Per-codeword OLLA that counts those NACKs drives the later codewords' MCS down and keeps only about 2 % cell SE. OLLA that skips a codeword's update when an earlier codeword failed (the gNB has every codeword's ACK/NACK) keeps 4.2–5.5 % (LTE style) and 3.4–5.1 % (one codeword per layer).
-- **LTE style is the better multi-codeword split.** With realistic link adaptation, it gains as much cell SE as one codeword per layer, or more. It is neutral at the 5th percentile (−0.4 / +1.1 % with conditional OLLA), where one codeword per layer loses 2.7–6.1 %. It also needs CQI, MCS and HARQ-ACK for two codewords instead of up to four. One codeword per layer leads only with ideal link adaptation.
+- **LTE style is the better multi-codeword split.** With realistic link adaptation, it gains as much cell SE as one codeword per layer, or more. It is neutral at the 5th percentile (−0.4 / +1.1 % with conditional OLLA), where one codeword per layer loses 2.7–6.1 %. It also needs CQI, MCS and HARQ-ACK for two codewords instead of up to four. One codeword per layer leads in cell SE only with ideal link adaptation. With SIC it leads at the 95th percentile under every link adaptation: +8.1 to +9.9 % against +6.9 to +8.3 % for LTE style with conditional OLLA. It trades cell-edge throughput for peak throughput.
 
 So, up to rank 4 with a linear receiver, keep NR's single codeword. A two-codeword LTE-style split pays only with a SIC receiver, and then only with link adaptation that knows about error propagation: about +4 to +5.5 % cell SE, against +6 to +9 % with ideal link adaptation. One codeword per layer adds nothing over LTE style unless link adaptation is close to ideal, and it costs the most at the cell edge.
 
@@ -70,32 +70,34 @@ With one codeword, SIC is MMSE-IRC and both OLLA policies are the same. NR is th
 
 ### Gains over NR
 
-Gain in per cent over NR, for cell SE and for the 5th-percentile and median UT SE:
+Gain in per cent over NR, for cell SE and for the 5th-percentile, median and 95th-percentile UT SE. With full buffer and 10 UTs in every cell, cell SE is 10 × the mean UT SE, so the cell-SE gain is also the gain in mean user throughput:
 
-| Receiver, link adaptation | Scheme | eType-II: cell SE | 5th pct | median | SVD: cell SE | 5th pct | median |
-|---|---|---|---|---|---|---|---|
-| MMSE-IRC, OLLA | LTE style | **−1.1** | −3.5 | −1.8 | **−0.7** | −1.2 | −1.3 |
-| MMSE-IRC, OLLA | 1 CW per layer | **−1.6** | −3.8 | −2.0 | **−1.8** | −4.1 | −2.6 |
-| MMSE-IRC, ideal LA | LTE style | **+1.6** | +2.4 | +1.6 | **+1.3** | +1.4 | +1.4 |
-| MMSE-IRC, ideal LA | 1 CW per layer | **+2.0** | +0.2 | +0.7 | **+1.7** | +0.2 | +1.6 |
-| SIC, OLLA | LTE style | **+2.1** | −3.5 | +0.3 | **+2.0** | −1.1 | +0.4 |
-| SIC, OLLA | 1 CW per layer | **+2.2** | −7.5 | +0.3 | **+1.8** | −3.5 | −0.2 |
-| SIC, conditional OLLA | LTE style | **+5.5** | −0.4 | +3.5 | **+4.2** | +1.1 | +2.3 |
-| SIC, conditional OLLA | 1 CW per layer | **+5.1** | −6.1 | +2.1 | **+3.4** | −2.7 | +1.3 |
-| SIC, ideal LA | LTE style | **+8.7** | +4.9 | +7.4 | **+6.2** | +3.3 | +5.7 |
-| SIC, ideal LA | 1 CW per layer | **+12.2** | +3.1 | +10.0 | **+8.1** | +2.9 | +6.4 |
+| Receiver, link adaptation | Scheme | eType-II: cell SE | 5th pct | median | 95th pct | SVD: cell SE | 5th pct | median | 95th pct |
+|---|---|---|---|---|---|---|---|---|---|
+| MMSE-IRC, OLLA | LTE style | **−1.1** | −3.5 | −1.8 | −0.5 | **−0.7** | −1.2 | −1.3 | +0.5 |
+| MMSE-IRC, OLLA | 1 CW per layer | **−1.6** | −3.8 | −2.0 | −0.8 | **−1.8** | −4.1 | −2.6 | +0.5 |
+| MMSE-IRC, ideal LA | LTE style | **+1.6** | +2.4 | +1.6 | +3.1 | **+1.3** | +1.4 | +1.4 | +1.0 |
+| MMSE-IRC, ideal LA | 1 CW per layer | **+2.0** | +0.2 | +0.7 | +4.4 | **+1.7** | +0.2 | +1.6 | +1.7 |
+| SIC, OLLA | LTE style | **+2.1** | −3.5 | +0.3 | +6.1 | **+2.0** | −1.1 | +0.4 | +5.0 |
+| SIC, OLLA | 1 CW per layer | **+2.2** | −7.5 | +0.3 | +7.5 | **+1.8** | −3.5 | −0.2 | +5.8 |
+| SIC, conditional OLLA | LTE style | **+5.5** | −0.4 | +3.5 | +8.3 | **+4.2** | +1.1 | +2.3 | +6.9 |
+| SIC, conditional OLLA | 1 CW per layer | **+5.1** | −6.1 | +2.1 | +9.9 | **+3.4** | −2.7 | +1.3 | +8.1 |
+| SIC, ideal LA | LTE style | **+8.7** | +4.9 | +7.4 | +12.8 | **+6.2** | +3.3 | +5.7 | +8.0 |
+| SIC, ideal LA | 1 CW per layer | **+12.2** | +3.1 | +10.0 | +15.8 | **+8.1** | +2.9 | +6.4 | +9.5 |
 
-NR itself, with OLLA (480 slots), has these cell SE / 5th-pct / median UT SE values, in bit/s/Hz, and first-transmission BLER:
+NR itself, with OLLA (480 slots), has these cell SE / 5th-pct / median / 95th-pct UT SE values, in bit/s/Hz (× 10 MHz gives the user throughput), and first-transmission BLER:
 
-- eType-II: 4.59 / 0.198 / 0.413, BLER 0.103
-- SVD: 5.01 / 0.204 / 0.445, BLER 0.101
+- eType-II: 4.59 / 0.198 / 0.413 / 0.876, BLER 0.103
+- SVD: 5.01 / 0.204 / 0.445 / 0.957, BLER 0.101
 
 With ideal link adaptation (240 slots) they are:
 
-- eType-II: 5.61 / 0.244 / 0.504, BLER 0.033
-- SVD: 6.16 / 0.255 / 0.545, BLER 0.034
+- eType-II: 5.61 / 0.244 / 0.504 / 1.047, BLER 0.033
+- SVD: 6.16 / 0.255 / 0.545 / 1.169, BLER 0.034
 
 Per drop, each cell-SE gain is within 1 point of the pooled value, and the sign never changes between drops. For example, LTE style with MMSE-IRC and OLLA gives −1.2 / −0.9 / −1.1 % on the three eType-II drops, and LTE style with conditional OLLA gives +5.7 / +5.4 / +5.4 %. The dots in the figure are the single drops.
+
+The percentiles are noisier, the 95th most of all, since each drop's value rests on the top 28 of 570 UTs. Between drops, the 95th-percentile gain typically moves by 3 points and by up to 6. Read differences of a couple of points there as a tendency, not a result. That includes one codeword per layer being 1–3 points ahead of LTE style at the 95th percentile with SIC. It is ahead in every pooled SIC configuration and in 13 of the 16 single drops.
 
 ### Potential against link adaptation
 
@@ -178,7 +180,7 @@ Gain in the mean UT SE of each third of the UTs, sorted by geometry (wideband SI
 | SIC, ideal LA | LTE style | +3.9 | +6.5 | +12.8 | +2.6 | +4.9 | +8.9 |
 | | 1 CW per layer | +3.6 | +9.8 | +18.2 | +2.5 | +6.6 | +11.8 |
 
-The gain of more codewords is a high-geometry gain: those UTs have the SINR for rank 3 and 4, and SIC turns it into rate. At low geometry a codeword fails more often, and with SIC it takes the later codewords with it. With realistic link adaptation, one codeword per layer therefore loses 2.4–5.3 % in the lowest third with SIC. LTE style, with one codeword fewer to fail, is neutral to positive there with conditional OLLA.
+The gain of more codewords is a high-geometry gain: those UTs have the SINR for rank 3 and 4, and SIC turns it into rate. At low geometry a codeword fails more often, and with SIC it takes the later codewords with it. With realistic link adaptation, one codeword per layer therefore loses 2.4–5.3 % in the lowest third with SIC. LTE style, with one codeword fewer to fail, is neutral to positive there with conditional OLLA. At the top of the distribution it is the other way round. With SIC, the 95th-percentile UTs gain 5–16 %, more than the average, and one codeword per layer gains most there.
 
 ## Reproducibility
 
