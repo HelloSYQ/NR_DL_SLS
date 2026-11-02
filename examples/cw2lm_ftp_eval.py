@@ -32,8 +32,21 @@ still open at the end count with the upper bound size / (end - arrival).
         --drops 2 --first-drop 3 --log results/part.jsonl               # one slice
     python examples/cw2lm_ftp_eval.py --summary-only --log a.jsonl,b.jsonl
 
+Set-ups (``--setup``), both Dense Urban-eMBB A at 4 GHz FDD with 52 PRB:
+
+  10mhz   15 kHz SCS, 10 MHz, 41 dBm (M.2412's 44 dBm per 20 MHz scaled to
+          10 MHz); rates in results/cw2lm_ftp_rates.json, summary in
+          results/cw2lm_ftp.json
+  20mhz   30 kHz SCS, 20 MHz channel, 44 dBm; rates in
+          results/cw2lm_ftp_rates_20mhz.json, summary in
+          results/cw2lm_ftp_20mhz.json
+
+CSI period (20 ms), CSI delay (4 ms) and channel update (2 ms) are times and
+are converted to slots of the set-up's numerology; ``--slots``, ``--warmup``,
+``--drain`` and the HARQ round trip (8 slots) are in slots.
+
 Each finished run is appended to ``--log`` at once and a re-run skips the
-runs already there.  Writes ``results/cw2lm_ftp.json``.
+runs already there.
 """
 
 from __future__ import annotations
@@ -54,7 +67,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
 from cw2lm_rank4_eval import _commit, load_log                          # noqa: E402
-from nrsls.config.scenario import get_preset                          # noqa: E402
+from nrsls.config.scenario import CarrierConfig, get_preset           # noqa: E402
 from nrsls.engine.fullbuffer import FullBufferConfig, run_full_buffer_drop  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "results")
@@ -64,28 +77,54 @@ VARIANTS = {"irc-olla": "irc", "sic-olla": "sic"}
 CASES = {"etype2_20ms": "etype2", "svd_sb_20ms": "svd_sb"}
 LOADS = ("20", "50", "70")
 FILE_BYTES = 0.5e6
-CAL_RATES = (0.4, 0.7, 1.0, 1.3, 1.6)     # files/s per UT tried by --calibrate
+CSI_PERIOD_S, CSI_DELAY_S, CHANNEL_UPDATE_S = 20e-3, 4e-3, 2e-3
+DEFAULT_SETUP = "10mhz"
+SETUPS = {
+    "10mhz": dict(preset={}, rates=RATES, out=os.path.join(OUT, "cw2lm_ftp.json"),
+                  cal_rates=(0.4, 0.7, 1.0, 1.3, 1.6),         # files/s per UT
+                  carrier="4 GHz FDD, 15 kHz SCS, 10 MHz (52 PRB)",
+                  power="41 dBm per 10 MHz"),
+    "20mhz": dict(preset=dict(carrier=CarrierConfig(mu=1, n_size_grid=52),
+                              bs_tx_power_dbm=44.0, channel_bandwidth_hz=20e6),
+                  rates=os.path.join(OUT, "cw2lm_ftp_rates_20mhz.json"),
+                  out=os.path.join(OUT, "cw2lm_ftp_20mhz.json"),
+                  cal_rates=(0.65, 0.85, 1.3, 1.5, 1.75, 2.0),
+                  carrier="4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB)",
+                  power="44 dBm per 20 MHz"),
+}
+CAL_RATES = SETUPS[DEFAULT_SETUP]["cal_rates"]
+
+
+def scenario(setup: str = DEFAULT_SETUP):
+    return get_preset("du-a", **SETUPS[setup]["preset"])
+
+
+def _slots(setup: str, seconds: float) -> int:
+    return int(round(seconds / scenario(setup).carrier.slot_duration_s))
 
 
 def fb_config(case: str, variant: str, scheme: str, rate: float, slots: int, warmup: int,
-              drain: int) -> FullBufferConfig:
+              drain: int, setup: str = DEFAULT_SETUP) -> FullBufferConfig:
     extra = {"receiver": "sic"} if VARIANTS[variant] == "sic" else {}
     return FullBufferConfig(
         n_slots=slots, warmup_slots=warmup, codebook=CASES[case], max_rank=4, rbg_size=4,
-        channel_update_slots=2, csi_period_slots=20, csi_delay_slots=4, pdcch_symbols=2,
+        channel_update_slots=_slots(setup, CHANNEL_UPDATE_S),
+        csi_period_slots=_slots(setup, CSI_PERIOD_S),
+        csi_delay_slots=_slots(setup, CSI_DELAY_S), pdcch_symbols=2,
         overhead_re_per_prb=9, harq_adaptive=True, cw_mapping=scheme, traffic="ftp3",
         ftp_file_bytes=FILE_BYTES, ftp_rate_per_ue=rate, ftp_drain_slots=drain, **extra)
 
 
 def _worker(task):
-    case, variant, scheme, load, rate, drop, slots, warmup, drain, seed = task
+    case, variant, scheme, load, rate, drop, slots, warmup, drain, seed = task[:10]
+    setup = task[10] if len(task) > 10 else DEFAULT_SETUP
     t0 = time.time()
-    r = run_full_buffer_drop(get_preset("du-a"),
-                             fb_config(case, variant, scheme, rate, slots, warmup, drain),
+    r = run_full_buffer_drop(scenario(setup),
+                             fb_config(case, variant, scheme, rate, slots, warmup, drain, setup),
                              np.random.default_rng([seed, drop]))
     rd = lambda a: [round(float(x), -3) for x in a]                  # 1 kbit/s
     return dict(case=case, variant=variant, scheme=scheme, load=load, rate=rate, drop=drop,
-                n_slots=slots, warmup=warmup, drain=drain, seed=seed,
+                n_slots=slots, warmup=warmup, drain=drain, seed=seed, setup=setup,
                 runtime_s=round(time.time() - t0, 1), ru=r.resource_utilization,
                 files_counted=r.files_counted, served_se=r.cell_se,
                 upt=rd(r.file_upt_bps), upt_ue=r.file_ue.tolist(),
@@ -98,7 +137,8 @@ def _worker(task):
 
 def _key(rec) -> tuple:
     return (rec["case"], rec["variant"], rec["scheme"], rec["load"], rec["rate"], rec["drop"],
-            rec["n_slots"], rec["warmup"], rec["drain"], rec["seed"])
+            rec["n_slots"], rec["warmup"], rec["drain"], rec["seed"],
+            rec.get("setup", DEFAULT_SETUP))
 
 
 def run_tasks(tasks: list, jobs: int, log_out: str, log: list) -> None:
@@ -127,14 +167,18 @@ def run_tasks(tasks: list, jobs: int, log_out: str, log: list) -> None:
 
 
 # --- calibration -----------------------------------------------------------
-def calibrate(log: list, targets=(0.2, 0.5, 0.7)) -> dict:
+def calibrate(log: list, targets=(0.2, 0.5, 0.7), setup: str = DEFAULT_SETUP) -> dict:
     """Arrival rate per case for each RU target: piecewise-linear
-    interpolation of NR's RU(rate) through (0, 0) and the calibration runs,
-    extrapolated from the last two points beyond them."""
+    interpolation of NR's RU(rate), averaged over the calibration drops,
+    through (0, 0), extrapolated from the last two points beyond them."""
     out = {}
     for case in CASES:
-        pts = sorted((r["rate"], r["ru"]) for r in log
-                     if r["case"] == case and r["load"] == "cal" and r["scheme"] == "nr")
+        by_rate = {}
+        for r in log:
+            if (r["case"] == case and r["load"] == "cal" and r["scheme"] == "nr"
+                    and r.get("setup", DEFAULT_SETUP) == setup):
+                by_rate.setdefault(r["rate"], []).append(r["ru"])
+        pts = sorted((x, float(np.mean(v))) for x, v in by_rate.items())
         if not pts:
             continue
         x = np.array([0.0] + [p[0] for p in pts])
@@ -175,12 +219,12 @@ def _kpis(recs: list) -> dict:
             "runtime_s": float(np.sum([r["runtime_s"] for r in recs]))}
 
 
-def summarize(log: list) -> dict:
+def summarize(log: list, setup: str = DEFAULT_SETUP) -> dict:
     """Per (case, load, run length): every variant's schemes against NR
     (MMSE-IRC) on the drops both have."""
     groups = {}
     for r in log:
-        if r["load"] not in LOADS:
+        if r["load"] not in LOADS or r.get("setup", DEFAULT_SETUP) != setup:
             continue
         g = (r["case"], r["load"], r["n_slots"], r["warmup"], r["drain"], r["seed"])
         groups.setdefault(g, {}).setdefault((r["variant"], r["scheme"]), {})[r["drop"]] = r
@@ -205,8 +249,11 @@ def summarize(log: list) -> dict:
                                           zip(m["upt_mean_per_drop"], b["upt_mean_per_drop"])]}
             entry["variants"].setdefault(variant, {})[scheme] = st
         out.append(entry)
+    car = scenario(setup).carrier
     return {"scenario": "Dense Urban-eMBB A (du-a)", "traffic": "FTP model 3",
-            "file_bytes": FILE_BYTES, "max_rank": 4, "harq": "adaptive", "configurations": out}
+            "file_bytes": FILE_BYTES, "max_rank": 4, "harq": "adaptive", "setup": setup,
+            "carrier": SETUPS[setup]["carrier"], "power": SETUPS[setup]["power"],
+            "slot_ms": car.slot_duration_s * 1e3, "configurations": out}
 
 
 def print_summary(summ: dict) -> None:
@@ -228,6 +275,7 @@ def print_summary(summ: dict) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--setup", default=DEFAULT_SETUP, choices=list(SETUPS))
     ap.add_argument("--cases", default=",".join(CASES))
     ap.add_argument("--variants", default=",".join(VARIANTS))
     ap.add_argument("--schemes", default=",".join(SCHEMES))
@@ -240,23 +288,31 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--calibrate", action="store_true",
-                    help="NR at several arrival rates on drop 0; writes --rates")
+                    help="NR at several arrival rates on --cal-drops drops; writes --rates")
     ap.add_argument("--cal-slots", type=int, default=900)
-    ap.add_argument("--rates", default=RATES)
+    ap.add_argument("--cal-drops", type=int, default=1)
+    ap.add_argument("--cal-rates", default=None,
+                    help="comma-separated files/s per UT (default: the set-up's)")
+    ap.add_argument("--rates", default=None, help="default: the set-up's rates file")
     ap.add_argument("--log", default=os.path.join(OUT, "cw2lm_ftp_runs.jsonl"),
                     help="comma-separated JSON-lines logs; new records go to the first")
-    ap.add_argument("--out", default=os.path.join(OUT, "cw2lm_ftp.json"))
+    ap.add_argument("--out", default=None, help="default: the set-up's summary file")
     ap.add_argument("--summary-only", action="store_true")
     args = ap.parse_args()
 
+    setup = args.setup
+    args.rates = args.rates or SETUPS[setup]["rates"]
+    args.out = args.out or SETUPS[setup]["out"]
     log = load_log(args.log)
     log_out = args.log.split(",")[0]
     cases = args.cases.split(",")
     if args.calibrate:
-        tasks = [(c, "irc-olla", "nr", "cal", r, 0, args.cal_slots, args.warmup, 0, args.seed)
-                 for c in cases for r in CAL_RATES]
+        cal = ([float(x) for x in args.cal_rates.split(",")] if args.cal_rates
+               else SETUPS[setup]["cal_rates"])
+        tasks = [(c, "irc-olla", "nr", "cal", r, d, args.cal_slots, args.warmup, 0, args.seed,
+                  setup) for c in cases for r in cal for d in range(args.cal_drops)]
         run_tasks(tasks, args.jobs, log_out, log)
-        rates = calibrate(log)
+        rates = calibrate(log, setup=setup)
         with open(args.rates, "w") as fh:
             json.dump(rates, fh, indent=1)
         print(json.dumps(rates, indent=1))
@@ -274,9 +330,9 @@ def main() -> int:
                             continue                   # one codeword: SIC = MMSE-IRC
                         for d in range(args.first_drop, args.first_drop + args.drops):
                             tasks.append((c, v, s, ld, rates[c]["rates"][ld], d, args.slots,
-                                          args.warmup, args.drain, args.seed))
+                                          args.warmup, args.drain, args.seed, setup))
         run_tasks(tasks, args.jobs, log_out, log)
-    summ = summarize(log)
+    summ = summarize(log, setup)
     print_summary(summ)
     with open(args.out, "w") as fh:
         json.dump(summ, fh, indent=1)

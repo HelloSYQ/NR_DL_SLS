@@ -100,14 +100,15 @@ PER_COL = {
 }
 
 
-def _assumption(label: str, parent: str, traffic: str, remarks: str) -> dict:
+def _assumption(label: str, parent: str, traffic: str, remarks: str, common: dict = COMMON,
+                per_col: dict = PER_COL) -> dict:
     """{column key: text} of an assumption row, matched on the start of its
     label ('Precoding algorithm' also on the block it belongs to)."""
-    for key, v in COMMON.items():
+    for key, v in common.items():
         name, _, blk = key.partition("|")
         if label.startswith(name) and (not blk or blk == parent):
             return {k: v for k in COLS}
-    for key, v in PER_COL.items():
+    for key, v in per_col.items():
         if label.startswith(key):
             return v
     if label.startswith("Traffic model"):
@@ -126,6 +127,13 @@ def plan(summ: dict, path: str) -> dict:
     (written as a fraction with a 0.0 % format).  Rows are found by their labels."""
     ws = openpyxl.load_workbook(path)[SHEET]
     conf = {(e["case"], e["load"]): e for e in summ["configurations"]}
+    # set-up of the summary (carrier, power, slot length); older summaries are 10 MHz
+    ms = summ.get("slot_ms", 1.0)
+    common = dict(COMMON)
+    common["Carrier, SCS and bandwidth"] = summ.get("carrier", COMMON["Carrier, SCS and bandwidth"])
+    common["gNB transmit power"] = summ.get("power", COMMON["gNB transmit power"])
+    per_col = {k: {c: (t.replace("8-slot RTT", f"8-slot ({8 * ms:g} ms) RTT") if ms != 1 else t)
+                   for c, t in v.items()} for k, v in PER_COL.items()}
 
     # measured RU of NR per case and load, for the remarks
     def nr_ru(c, ld):
@@ -139,8 +147,8 @@ def plan(summ: dict, path: str) -> dict:
         "MIESM link abstraction. Alt2 = LTE split {1}/{1,1}/{1,2}/{2,2} (TS 36.211 Table "
         "6.3.3.2-1); Alt3 = one codeword per layer. Alt1 with the same modulation order is "
         "the NR baseline (0 %); Alt1 with a different modulation order per layer, Type I and "
-        f"other precoding not evaluated. {len(drops)} drops of {e0['n_slots']} ms "
-        f"({e0['warmup']} ms warm-up; files arriving in the last {e0['drain']} ms are "
+        f"other precoding not evaluated. {len(drops)} drops of {e0['n_slots'] * ms:g} ms "
+        f"({e0['warmup'] * ms:g} ms warm-up; files arriving in the last {e0['drain'] * ms:g} ms are "
         "served but not counted; files still open at the end count with an upper-bound "
         f"UPT). Measured NR RU [%] at the three loads: eType-II {ru['etype2_20ms']}, "
         f"sub-band SVD {ru['svd_sb_20ms']}; every scheme runs with the same files.")
@@ -163,7 +171,7 @@ def plan(summ: dict, path: str) -> dict:
             block, metric, alt = a, None, None
             continue
         if block is None:                                  # assumption rows
-            vals = _assumption(b_label if b else a_label, a_label, traffic, remarks)
+            vals = _assumption(b_label if b else a_label, a_label, traffic, remarks, common, per_col)
             for k, v in vals.items():
                 cells[f"{COLS[k]}{r}"] = v
             continue
