@@ -10,6 +10,8 @@ This is the FTP-traffic counterpart of [cw2lm-rank4.md](cw2lm-rank4.md). It fill
 
 Alt1 with a different modulation order per layer is not evaluated.
 
+The same study at 20 MHz, 30 kHz SCS and 44 dBm, with 10 drops and loads that land on target, is in [cw2lm-ftp-20mhz.md](cw2lm-ftp-20mhz.md).
+
 ## Result
 
 ![UPT gain of LTE style and one codeword per layer over NR](../results/cw2lm_ftp.png)

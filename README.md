@@ -68,6 +68,12 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   SIC receiver and plain OLLA, LTE style gains 4–9 % mean UPT and is about
   neutral to +4 % at the 5th percentile. See
   [`docs/cw2lm-ftp.md`](docs/cw2lm-ftp.md).
+  The same study at 20 MHz, 30 kHz SCS and 44 dBm with 10 drops
+  (`--setup 20mhz`, loads recalibrated to 21 / 51 / 71 % RU) gives the same
+  picture: MMSE-IRC, LTE style −3 to −7 % and one codeword per layer −10 to
+  −14 % mean UPT; SIC, +5 to +10 % and +5 to +12 %. See
+  [`docs/cw2lm-ftp-20mhz.md`](docs/cw2lm-ftp-20mhz.md) and
+  `6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx`.
 
 ## Guided tour
 
@@ -123,6 +129,8 @@ python examples/cw2lm_rank4_eval.py --summary-only --plot results/cw2lm_rank4.pn
 python examples/cw2lm_ftp_eval.py --summary-only --log "$(ls results/ftp_parts/*.jsonl | paste -sd,)"
 python examples/plot_cw2lm_ftp.py
 python examples/fill_cw2l_template.py results/cw2lm_ftp.json 6GR_DL_CW2L_template_v003.xlsx
+python examples/cw2lm_ftp_eval.py --setup 20mhz --summary-only --log "$(ls results/ftp20_parts/*.jsonl | paste -sd,)"
+python examples/fill_cw2l_template.py results/cw2lm_ftp_20mhz.json 6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx
 
 # tests
 python -m pytest
