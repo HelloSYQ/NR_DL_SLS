@@ -16,6 +16,8 @@ This repeats the FTP study of [cw2lm-ftp.md](cw2lm-ftp.md) with a different carr
 
 Everything else is the same: Dense Urban-eMBB A, 32T and 4R, rank ≤ 4, eType-II and reciprocity-based (sub-band SVD) precoding, MMSE-IRC and codeword-level SIC with plain per-codeword OLLA, 0.5 Mbyte files, 4-PRB RBGs and sub-bands.
 
+**Building loss.** These runs used the building-loss model `du-a` had at the time: 20 % high-loss / 80 % low-loss buildings, which ITU-R M.2412 assigns to channel model B. Since 2026-11-03 `du-a` uses the channel-model-A loss (20 dB + 0.5 d2D-in), and the study scripts pin the former mix (`DU_A_MIXED_O2I`) so the results here stay reproducible. In the Dense Urban calibration the two models differ by 2–6 dB in coupling gain but only 0–0.3 dB in geometry, because the 200 m layout is interference-limited ([benchmark-suite.md](benchmark-suite.md)). The relative gains are therefore not expected to change; absolute UPTs may shift slightly.
+
 **Why the run is the same in slots.** The power per Hz is the same as before: 44 dBm over 18.7 MHz against 41 dBm over 9.4 MHz. So the SINRs barely change.
 - **Twice as fast:** a 0.5 ms slot carries about as many bits as a 1 ms slot did, so the system moves twice as fast. The arrival rates for the same RU are about twice the 10 MHz ones, and a file is served in about half the time.
 - **Same statistics per drop:** a run of the same number of slots therefore sees about as many files, and as many transmissions per UE, as before. That gives the same statistics per drop at half the simulated time.

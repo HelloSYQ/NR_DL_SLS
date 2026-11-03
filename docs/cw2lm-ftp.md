@@ -164,6 +164,8 @@ What differs from the full-buffer study:
 
 The rest is as in the full-buffer study: Dense Urban-eMBB A (57 cells, ISD 200 m, 4 GHz, 10 MHz at 15 kHz, 32T, UE 4R, 10 UEs per cell), rank ≤ 4, 4-PRB RBGs and sub-bands, OLLA per codeword (10 % target), up to 4 transmissions with chase combining and adaptive retransmissions.
 
+**Building loss.** These runs used the building-loss model `du-a` had at the time: 20 % high-loss / 80 % low-loss buildings, which ITU-R M.2412 assigns to channel model B. Since 2026-11-03 `du-a` uses the channel-model-A loss (20 dB + 0.5 d2D-in), and the study scripts pin the former mix (`DU_A_MIXED_O2I`) so the results here stay reproducible. In the Dense Urban calibration the two models differ by 2–6 dB in coupling gain but only 0–0.3 dB in geometry, because the 200 m layout is interference-limited ([benchmark-suite.md](benchmark-suite.md)). The relative gains are therefore not expected to change; absolute UPTs may shift slightly.
+
 **How FTP is modelled** (`FullBufferConfig.traffic = 'ftp3'`):
 
 - **Scheduling:** only UEs with data are scheduled. PF assigns each RBG to the best UE among those whose buffer the RBGs given so far do not yet cover.

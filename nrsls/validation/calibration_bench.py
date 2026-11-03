@@ -73,8 +73,8 @@ CASES = [
               "for interferers); legacy O2I for channel model A"),
     Case("du-4g-o2i-mixed", "rp-du-4g", "DenseUrban_4GHz_ModelA",
          overrides={"channel_model_a_o2i": "mixed"}, scored=False,
-         note="sensitivity: the 20 % high / 80 % low-loss building mix that "
-              "the du-a system preset uses"),
+         note="sensitivity: the 20 % high / 80 % low-loss building mix du-a "
+              "used before 2026-11-03 (and the CW2L studies still pin)"),
 ]
 
 

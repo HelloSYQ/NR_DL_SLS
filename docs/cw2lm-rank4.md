@@ -45,6 +45,7 @@ The earlier study ([cw2lm-sls.md](cw2lm-sls.md)) ran its main table with 160 slo
 ## Set-up
 
 - Dense Urban-eMBB A preset: 19 sites × 3, ISD 200 m, 4 GHz, 10 MHz at 15 kHz, 32T (8,8,2;2,8), UT (1,2,2) with 4 receive ports, 10 UTs per cell (570 UTs), 80 % indoor at 3 km/h and 20 % in car at 30 km/h.
+- Building loss: 20 % high-loss / 80 % low-loss buildings, the `du-a` preset at the time. Since 2026-11-03 `du-a` uses the ITU-R M.2412 channel-model-A loss (20 dB + 0.5 d2D-in); `examples/cw2lm_rank4_eval.py` pins the former mix (`DU_A_MIXED_O2I`) so these results stay reproducible. Geometry differs by 0–0.3 dB between the two in the Dense Urban calibration ([benchmark-suite.md](benchmark-suite.md)).
 - SU-MIMO up to rank 4, full buffer, PF scheduling, RBG = CSI sub-band = 4 PRB, 2 PDCCH symbols and 9 overhead REs per PRB, channel updated every 2 slots.
 - Two CSI cases, as in the earlier study: **eType-II** (combination 6) every 20 ms and 4 ms old (Apple-like), and unquantised **wideband SVD** every 2 ms and fresh (Nokia-like).
 - OLLA per UT and codeword (10 % BLER target, 0.5 dB step). Up to 4 transmissions with chase combining, 8-slot RTT. Retransmissions are **adaptive**: they are re-precoded with the UT's current report when its rank matches, and refilled codewords take its current CQI. This was the better policy for every scheme in the earlier study, and the better case for more codewords.
