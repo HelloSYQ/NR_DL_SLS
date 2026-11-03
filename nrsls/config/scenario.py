@@ -438,11 +438,17 @@ def dense_urban_a(**overrides) -> ScenarioConfig:
 
     19 sites x 3 TRxPs, ISD 200 m, BS at 25 m, 4 GHz, 41 dBm per 10 MHz,
     15 kHz SCS (52 PRB), BS element 8 dBi, UE NF 7 dB, 10 UTs per TRxP:
-    80 % indoor (20 % high-loss / 80 % low-loss buildings, 3 km/h), 20 %
-    outdoor in cars (30 km/h).  gNB 32T: (M, N, P, Mg, Ng; Mp, Np) =
-    (8, 8, 2, 1, 1; 2, 8); UT 4 ports (1, 2, 2).  Channel model A: the
-    TR 38.901 UMa model (matches the RP-180524 UMa calibration).
-    Spectral efficiency is normalised by the 10 MHz channel bandwidth.
+    80 % indoor (3 km/h), 20 % outdoor in cars (30 km/h, N(9, 5) dB car
+    loss).  gNB 32T: (M, N, P, Mg, Ng; Mp, Np) = (8, 8, 2, 1, 1; 2, 8); UT
+    4 ports (1, 2, 2).  Channel model A: the TR 38.901 UMa model, with the
+    M.2412 Table A1-7 building loss for model A at <= 6 GHz, 20 dB +
+    0.5 d2D-in (the 'legacy' model; the 20 % high / 80 % low-loss mix of
+    M.2412 Table 5b belongs to model B).  Both match the RP-180524
+    calibration (docs/benchmark-suite.md).  Spectral efficiency is
+    normalised by the 10 MHz channel bandwidth.
+
+    Until 2026-11-03 this preset used the 20 / 80 high / low-loss mix; the
+    CW2L studies were run with it and pin it with ``DU_A_MIXED_O2I``.
     """
     ant = BSAntennaConfig(M=8, N=8, P=2, Mp=2, Np=8, dV=0.5, dH=0.5,
                           electrical_tilt_deg=102.0)
@@ -451,9 +457,16 @@ def dense_urban_a(**overrides) -> ScenarioConfig:
               noise_bandwidth_hz=None, channel_bandwidth_hz=10e6,
               bs_tx_power_dbm=41.0, ue_noise_figure_db=7.0, min_d2d_m=10.0,
               indoor_ratio=0.8, in_car_ratio=1.0, ue_speed_kmh=3.0,
-              in_car_speed_kmh=30.0, o2i_model="mixed", o2i_high_loss_ratio=0.2,
+              in_car_speed_kmh=30.0, o2i_model="legacy",
               bs_antenna=ant, ue_antenna=UEAntenna(M=1, N=2, P=2))
     return replace(cfg, **overrides)
+
+
+# The building mix du-a used before 2026-11-03 (M.2412 channel model B: 20 %
+# high-loss / 80 % low-loss).  The CW2L studies (docs/cw2lm-*.md) were run
+# with it; their scripts pass these overrides so that the committed results
+# stay reproducible.  Drop them to rerun a study with the model-A loss.
+DU_A_MIXED_O2I = {"o2i_model": "mixed", "o2i_high_loss_ratio": 0.2}
 
 
 PRESETS["du-a"] = dense_urban_a

@@ -67,7 +67,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
 from cw2lm_rank4_eval import _commit, load_log                          # noqa: E402
-from nrsls.config.scenario import CarrierConfig, get_preset           # noqa: E402
+from nrsls.config.scenario import DU_A_MIXED_O2I, CarrierConfig, get_preset  # noqa: E402
 from nrsls.engine.fullbuffer import FullBufferConfig, run_full_buffer_drop  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "results")
@@ -96,7 +96,8 @@ CAL_RATES = SETUPS[DEFAULT_SETUP]["cal_rates"]
 
 
 def scenario(setup: str = DEFAULT_SETUP):
-    return get_preset("du-a", **SETUPS[setup]["preset"])
+    # the published results used du-a's former building mix (DU_A_MIXED_O2I)
+    return get_preset("du-a", **DU_A_MIXED_O2I, **SETUPS[setup]["preset"])
 
 
 def _slots(setup: str, seconds: float) -> int:

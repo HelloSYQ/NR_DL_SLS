@@ -58,7 +58,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from nrsls.config.scenario import get_preset                        # noqa: E402
+from nrsls.config.scenario import DU_A_MIXED_O2I, get_preset  # noqa: E402
 from nrsls.engine.fullbuffer import FullBufferConfig, run_full_buffer_drop  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "results")
@@ -104,7 +104,9 @@ def _commit() -> str:
 
 def _worker(task):
     case, variant, scheme, drop, slots, warmup, seed, ues = task
-    cfg = get_preset("du-a") if ues is None else get_preset("du-a", ue_per_cell=ues)
+    # the published results used du-a's former building mix (DU_A_MIXED_O2I)
+    extra = {} if ues is None else {"ue_per_cell": ues}
+    cfg = get_preset("du-a", **DU_A_MIXED_O2I, **extra)
     t0 = time.time()
     # drop i is the random stream [seed, i] for every configuration
     r = run_full_buffer_drop(cfg, fb_config(case, variant, scheme, slots, warmup),

@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import numpy as np                                                     # noqa: E402
 
 from cw2lm_rank4_eval import VARIANTS, cases, fb_config                # noqa: E402
-from nrsls.config.scenario import get_preset                          # noqa: E402
+from nrsls.config.scenario import DU_A_MIXED_O2I, get_preset  # noqa: E402
 from nrsls.engine import fullbuffer                                   # noqa: E402
 
 
@@ -58,7 +58,7 @@ def main() -> int:
 
     fullbuffer.decode_tb = traced
     r = fullbuffer.run_full_buffer_drop(
-        get_preset("du-a"),
+        get_preset("du-a", **DU_A_MIXED_O2I),     # as in the published study
         fb_config(args.case, args.variant, args.scheme, args.slots, args.warmup),
         np.random.default_rng([args.seed, args.drop]))
 

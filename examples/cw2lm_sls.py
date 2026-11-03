@@ -38,7 +38,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from nrsls.config.scenario import get_preset                        # noqa: E402
+from nrsls.config.scenario import DU_A_MIXED_O2I, get_preset  # noqa: E402
 from nrsls.engine.fullbuffer import (FullBufferConfig, aggregate_drops,  # noqa: E402
                                      run_full_buffer_drop)
 
@@ -98,7 +98,9 @@ def main() -> int:
     ap.add_argument("--out", default=os.path.join(OUT, "cw2lm_sls.json"))
     args = ap.parse_args()
 
-    cfg = get_preset("du-a") if args.ues is None else get_preset("du-a", ue_per_cell=args.ues)
+    # the published results used du-a's former building mix (DU_A_MIXED_O2I)
+    extra = {} if args.ues is None else {"ue_per_cell": args.ues}
+    cfg = get_preset("du-a", **DU_A_MIXED_O2I, **extra)
     all_cases = cases(args.slots, args.warmup)
     tasks = []
     for case in args.cases.split(","):
