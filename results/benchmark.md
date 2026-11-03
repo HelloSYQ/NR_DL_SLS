@@ -1,6 +1,6 @@
 # nrsls benchmark scorecard: WARN
 
-Commit `d20f4a8`, 2026-11-03. Tier 1: 20 drops per configuration, seed 1. See [docs/benchmark-suite.md](../docs/benchmark-suite.md) for the method.
+Commit `c5284f8`, 2026-11-03. Tier 1: 20 drops per configuration, seed 1. See [docs/benchmark-suite.md](../docs/benchmark-suite.md) for the method.
 
 ## Tier 1: large-scale calibration against RP-180524 (peer test)
 
@@ -48,18 +48,18 @@ Gap to the company mean at the 5 / 10 / 20 / 50 / 80 / 90 / 95th percentiles [dB
 | du-4g-o2i-mixed | +1.3 +2.8 +4.1 +5.5 +5.3 +4.5 +3.7 | −0.8 −0.9 −1.0 −1.0 −0.6 −0.3 −0.4 |
 
 - **du-4g**: analog-beam calibration (best of 12 DFT beams; random beams for interferers); legacy O2I for channel model A.
-- **du-4g-o2i-mixed**: sensitivity: the 20 % high / 80 % low-loss building mix that the du-a system preset uses.
+- **du-4g-o2i-mixed**: sensitivity: the 20 % high / 80 % low-loss building mix du-a used before 2026-11-03 (and the CW2L studies still pin).
 
 ## Tier 2: end-to-end spectral efficiency against TR 37.910
 
-Dense Urban-eMBB config A, 32x4 MU-MIMO, eType-II and ideal CSI (cached results/validation_du_a.json (2026-11-01)): **PASS**.
+Dense Urban-eMBB config A, 32x4 MU-MIMO, eType-II and ideal CSI (cached results/validation_du_a.json (2026-11-03)): **PASS**.
 
 | Check | Measured | Criterion | Result |
 |---|---|---|---|
-| V1 eType-II average SE vs TR 37.910 Type II | 9.77 (-11.5 %) | 11.04 ± 15 % | PASS |
-| V2 eType-II 5th-percentile SE vs TR 37.910 Type II | 0.358 (-3.2 %) | 0.37 ± 15 % | PASS |
-| V3 ideal-CSI bound not below the reference | 12.59 | >= 10.49 | PASS |
-| V4 ideal CSI > eType-II (average and 5th percentile) | 12.59 > 9.77, 0.445 > 0.358 | both | PASS |
-| V5 ITU-R M.2410 requirement with eType-II | 9.77 / 0.358 | >= 7.8 / >= 0.225 | PASS |
-| V6 first-transmission BLER (target 10 %) | 0.099 / 0.094 | 0.07 ... 0.13 | PASS |
-| V7 MU-MIMO exercised (co-scheduled UTs per RBG) | 5.65 / 5.77 | >= 2 | PASS |
+| V1 eType-II average SE vs TR 37.910 Type II | 10.00 (-9.4 %) | 11.04 ± 15 % | PASS |
+| V2 eType-II 5th-percentile SE vs TR 37.910 Type II | 0.348 (-5.9 %) | 0.37 ± 15 % | PASS |
+| V3 ideal-CSI bound not below the reference | 12.89 | >= 10.49 | PASS |
+| V4 ideal CSI > eType-II (average and 5th percentile) | 12.89 > 10.00, 0.416 > 0.348 | both | PASS |
+| V5 ITU-R M.2410 requirement with eType-II | 10.00 / 0.348 | >= 7.8 / >= 0.225 | PASS |
+| V6 first-transmission BLER (target 10 %) | 0.099 / 0.092 | 0.07 ... 0.13 | PASS |
+| V7 MU-MIMO exercised (co-scheduled UTs per RBG) | 5.69 / 5.79 | >= 2 | PASS |

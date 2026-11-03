@@ -40,9 +40,10 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   configurations, now including Dense Urban config A with its analog-beam
   calibration. 8 pass and 2 warn (UMa URLLC geometry about 0.5 dB low), and
   none is further from the consensus than every company. It also found that
-  `du-a` uses channel model B's building-loss mix: 4.7 dB too much coupling
-  gain against the channel-model-A companies, geometry unchanged. Tier 2 is
-  the TR 37.910 end-to-end check. See
+  `du-a` used channel model B's building-loss mix (4.7 dB too much coupling
+  gain against the channel-model-A companies, geometry unchanged); `du-a`
+  now uses the M.2412 channel-model-A loss, and the TR 37.910 check still
+  passes 7/7 (eType-II 10.00 / 0.348). Tier 2 is that end-to-end check. See
   [`docs/benchmark-suite.md`](docs/benchmark-suite.md).
 - **Codeword-to-layer mapping probe** (`python examples/cw2lm_sls_probe.py`).
   In the Dense Urban A system with one codeword per UT, the CSI-stage gain
