@@ -152,6 +152,12 @@ class ScenarioConfig:
     # eq. 8.1-1, as in the RP-180524 calibration); 'los': BS gain toward the
     # LOS direction only (phase-1 model)
     coupling_model: str = "multipath"
+    # analog-beam calibration (RP-180524 Dense Urban config A): LCS (zenith,
+    # azimuth) beam directions in degrees.  Each TXRU is a K x L sub-array
+    # (bs_antenna M/Mp x N/Np) with 2-D DFT weights; the serving cell uses
+    # the beam with the highest RSRP, every other cell a random beam per UT.
+    # Large-scale calibration only (coupling gain and geometry).
+    calib_beams: tuple = ()
 
     # --- antennas ---
     bs_antenna: BSAntennaConfig = field(default_factory=BSAntennaConfig)
@@ -165,6 +171,8 @@ class ScenarioConfig:
             raise ValueError(f"unknown O2I model {self.o2i_model!r}")
         if self.coupling_model not in ("multipath", "los"):
             raise ValueError(f"unknown coupling model {self.coupling_model!r}")
+        if self.calib_beams and self.coupling_model != "multipath":
+            raise ValueError("calib_beams needs coupling_model='multipath'")
         if self.o2i_model == "legacy" and self.family not in ("uma", "umi"):
             raise ValueError("the legacy O2I model covers UMa and UMi only")
 
@@ -332,8 +340,8 @@ def rp180524(env: str, channel_model_a_o2i: str = "legacy",
     model A (default: the TR 38.901 Table 7.4.3-3 legacy model for UMa,
     low-loss for RMa, which has no legacy variant in nrsls).
 
-    Dense Urban config A and Indoor Hotspot need the analog-beam attachment
-    and are not covered yet.
+    Dense Urban config A (analog beams) is :func:`rp180524_du`, Indoor
+    Hotspot config A :func:`rp180524_inh`.
     """
     env = env.lower()
     tilt = {"rural-700m": 100.0, "rural-4g": 100.0, "rural-lmlc": 96.0,
@@ -365,6 +373,38 @@ def rp180524(env: str, channel_model_a_o2i: str = "legacy",
                   in_car_ratio=car, o2i_model=channel_model_a_o2i,
                   o2i_high_loss_ratio=0.2, **common)
     return replace(cfg, name=f"RP-180524 {env}", **overrides)
+
+
+# RP-180524 Table 2, Dense Urban config A: TRxP beam set in the LCS
+DU_A_CALIB_BEAMS = tuple((zen, az) for zen in (112.5, 157.5)
+                         for az in (-56.25, -33.75, -11.25, 11.25, 33.75, 56.25))
+
+
+def rp180524_du(channel_model_a_o2i: str = "legacy", **overrides) -> ScenarioConfig:
+    """RP-180524 Table 2, Dense Urban - eMBB config A (4 GHz) calibration.
+
+    19 sites x 3 TRxPs (30 / 150 / 270 deg), ISD 200 m, BS at 25 m,
+    mechanically horizontal, 41 dBm in 10 MHz, UE NF 7 dB, 10 UEs per TRxP,
+    80 % indoor (floors as in TR 38.901), 20 % outdoor in car, d2D_min 10 m,
+    wrap-around.  128 elements (8, 8, 2), dH = 0.5, dV = 0.8 lambda, 4 TXRUs
+    (Mp, Np, P) = (2, 1, 2): each TXRU is a 4 x 8 co-polarised sub-array with
+    2-D DFT analog weights.  Attachment on port-0 RSRP with the best of 12
+    beams (zenith 5pi/8, 7pi/8; azimuth +-pi/16, +-3pi/16, +-5pi/16 in the
+    LCS); interfering TRxPs use random beams.  UEs (1, 2, 2), 0 / 90 deg.
+
+    As for the other RP-180524 configs, the high/low-loss building mix
+    "applies to channel model B"; channel model A uses
+    ``channel_model_a_o2i`` (default: the TR 38.901 legacy model).
+    """
+    ant = BSAntennaConfig(M=8, N=8, P=2, Mp=2, Np=1, dV=0.8, dH=0.5,
+                          electrical_tilt_deg=90.0, mechanical_downtilt_deg=0.0)
+    cfg = uma(name="RP-180524 du-4g", isd_m=200.0, carrier_freq_hz=4e9,
+              carrier=CarrierConfig(mu=0, n_size_grid=52), noise_bandwidth_hz=10e6,
+              bs_tx_power_dbm=41.0, ue_noise_figure_db=7.0, min_d2d_m=10.0,
+              indoor_ratio=0.8, in_car_ratio=1.0, o2i_model=channel_model_a_o2i,
+              o2i_high_loss_ratio=0.2, bs_antenna=ant,
+              ue_antenna=UEAntenna(M=1, N=2, P=2), calib_beams=DU_A_CALIB_BEAMS)
+    return replace(cfg, **overrides)
 
 
 def rp180524_inh(trxp_per_site: int = 1, **overrides) -> ScenarioConfig:
@@ -417,6 +457,7 @@ def dense_urban_a(**overrides) -> ScenarioConfig:
 
 
 PRESETS["du-a"] = dense_urban_a
+PRESETS["rp-du-4g"] = rp180524_du
 PRESETS["rp-inh-12trxp"] = lambda **kw: rp180524_inh(1, **kw)
 PRESETS["rp-inh-36trxp"] = lambda **kw: rp180524_inh(3, **kw)
 

@@ -33,6 +33,17 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
 - **Validation case** with pass/fail criteria on this set-up
   (`python examples/validate_du_a.py`): PASS 7/7; see
   [`docs/validation-du-a.md`](docs/validation-du-a.md).
+- **Benchmark suite: is nrsls aligned with the other companies?**
+  (`python examples/benchmark.py`). Tier 1 is a peer test against the
+  RP-180524 per-company calibration curves: nrsls is scored as one more
+  company, with tolerances set by the companies' own spread, on 10
+  configurations, now including Dense Urban config A with its analog-beam
+  calibration. 8 pass and 2 warn (UMa URLLC geometry about 0.5 dB low), and
+  none is further from the consensus than every company. It also found that
+  `du-a` uses channel model B's building-loss mix: 4.7 dB too much coupling
+  gain against the channel-model-A companies, geometry unchanged. Tier 2 is
+  the TR 37.910 end-to-end check. See
+  [`docs/benchmark-suite.md`](docs/benchmark-suite.md).
 - **Codeword-to-layer mapping probe** (`python examples/cw2lm_sls_probe.py`).
   In the Dense Urban A system with one codeword per UT, the CSI-stage gain
   of one codeword per layer, with codeword-aware rank adaptation, is +1.2 %
@@ -131,6 +142,9 @@ python examples/plot_cw2lm_ftp.py
 python examples/fill_cw2l_template.py results/cw2lm_ftp.json 6GR_DL_CW2L_template_v003.xlsx
 python examples/cw2lm_ftp_eval.py --setup 20mhz --summary-only --log "$(ls results/ftp20_parts/*.jsonl | paste -sd,)"
 python examples/fill_cw2l_template.py results/cw2lm_ftp_20mhz.json 6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx
+
+# benchmark against the other companies (tier 1 ~3 min; --e2e reruns tier 2)
+python examples/benchmark.py
 
 # tests
 python -m pytest

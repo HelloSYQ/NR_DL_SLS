@@ -27,7 +27,7 @@ from ..antenna.array import BSAntenna
 from ..config.scenario import ScenarioConfig
 from ..link import association, link_budget
 from ..propagation import lsp, o2i as o2i_mod, pathloss
-from ..link.rsrp import multipath_gain
+from ..link.rsrp import multipath_beam_gains, multipath_gain
 from ..propagation.clusters import generate_clusters
 from ..propagation.fast_fading import subset_clusters
 from ..propagation.los import los_probability
@@ -51,7 +51,8 @@ class LargeScaleDrop:
     shadow_fading_db: np.ndarray
     penetration_db: np.ndarray    # O2I + in-car loss
     lsps: lsp.LSPs                # all seven LSPs per link
-    # per cell (C, U)
+    # per cell (C, U); with cfg.calib_beams: on each cell's best beam (the
+    # geometry uses random beams for the interfering cells)
     bs_gain_db: np.ndarray        # port-0 antenna (+ multipath) gain
     coupling_gain_db: np.ndarray
     rx_power_dbm: np.ndarray
@@ -137,6 +138,10 @@ def generate_drop(cfg: ScenarioConfig, rng, keep_clusters: bool = False) -> Larg
     kept = [] if keep_clusters else None
     if keep_clusters and cfg.coupling_model != "multipath":
         raise ValueError("keep_clusters needs coupling_model='multipath'")
+    beams = cfg.calib_beams
+    if keep_clusters and beams:
+        raise ValueError("calib_beams is a large-scale calibration mode")
+    gain_rand = np.empty_like(gain) if beams else None
     if cfg.coupling_model == "los":
         for c, s in enumerate(site):
             gain[c] = ant.port_gain_db(az[s], zen[s], layout.cell_bearing_deg[c])
@@ -148,6 +153,18 @@ def generate_drop(cfg: ScenarioConfig, rng, keep_clusters: bool = False) -> Larg
                                    az[s], zen[s], rng)
             for c in np.nonzero(site == s)[0]:
                 b = layout.cell_bearing_deg[c]
+                if beams:
+                    # best beam for attachment / serving, a random beam of
+                    # the set when the cell interferes (RP-180524 Table 2)
+                    gb = multipath_beam_gains(
+                        cl, lambda a, z, b=b: ant.element_field(a, z, b),
+                        cfg.ue_antenna.P,
+                        lambda a, z, b=b: ant.beam_power(a, z, b, beams))
+                    gb = np.maximum(gb, 1e-30)
+                    gain[c] = 10 * np.log10(gb.max(axis=0))
+                    pick = rng.integers(len(beams), size=n_ue)
+                    gain_rand[c] = 10 * np.log10(gb[pick, np.arange(n_ue)])
+                    continue
                 g = multipath_gain(
                     cl, lambda a, z, b=b: ant.port0_field(a, z, b),
                     cfg.ue_antenna.P)
@@ -160,7 +177,14 @@ def generate_drop(cfg: ScenarioConfig, rng, keep_clusters: bool = False) -> Larg
 
     serving = association.associate(cg)
     noise = link_budget.noise_power_dbm(cfg.bandwidth_hz, cfg.ue_noise_figure_db)
-    geom = link_budget.geometry_db(rx, serving, noise)
+    if beams:
+        # serving cell on its best beam, the others on their random beams
+        rx_geo = cfg.bs_tx_power_dbm + gain_rand + ue_gain - (pl + sf + pen)[site]
+        idx = np.arange(n_ue)
+        rx_geo[serving, idx] = rx[serving, idx]
+        geom = link_budget.geometry_db(rx_geo, serving, noise)
+    else:
+        geom = link_budget.geometry_db(rx, serving, noise)
 
     return LargeScaleDrop(
         cfg=cfg, layout=layout, ues=ues, d2d_m=d2d, d3d_m=d3d, az_deg=az,

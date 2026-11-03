@@ -24,6 +24,17 @@ from nrdlsim.channel_models import (element_field, local_element_gain,
 from ..config.scenario import BSAntennaConfig
 
 
+def af_power(psi, n: int):
+    """|sum_k e^{j k psi}|^2 / n = sin^2(n psi / 2) / (n sin^2(psi / 2)),
+    the power of a uniform n-element array factor with unit-norm weights
+    (peak n at psi = 0)."""
+    psi = np.asarray(psi, float)
+    half = np.sin(psi / 2)
+    small = np.abs(half) < 1e-9
+    return np.where(small, float(n), np.sin(n * psi / 2) ** 2
+                    / (n * np.where(small, 1.0, half) ** 2))
+
+
 class BSAntenna:
     def __init__(self, cfg: BSAntennaConfig):
         self.cfg = cfg
@@ -70,6 +81,58 @@ class BSAntenna:
     def peak_gain_dbi(self) -> float:
         g = 0.0 if self.cfg.pattern == "omni" else self.cfg.max_gain_dbi
         return g + 10.0 * np.log10(self.cfg.elements_per_txru)
+
+    def _local(self, az_deg, zen_deg, bearing_deg, downtilt_deg):
+        tilt = (self.cfg.mechanical_downtilt_deg if downtilt_deg is None
+                else downtilt_deg)
+        if tilt == 0.0:
+            return (np.asarray(az_deg, float) - bearing_deg,
+                    np.asarray(zen_deg, float))
+        return to_local_angles(az_deg, zen_deg, rotation_matrix(bearing_deg, tilt, 0.0))
+
+    def element_field(self, az_deg, zen_deg, bearing_deg: float,
+                      downtilt_deg: float | None = None):
+        """Polarised far field of one element of TXRU 0 (polarisation model
+        2, slant +45 deg for P = 2), without the sub-array factor."""
+        tilt = (self.cfg.mechanical_downtilt_deg if downtilt_deg is None
+                else downtilt_deg)
+        slant = np.deg2rad([45.0 if self.cfg.P == 2 else 0.0])
+        if tilt == 0.0:
+            az_l, zen_l = self._local(az_deg, zen_deg, bearing_deg, 0.0)
+            amp = np.sqrt(10 ** (self.element_gain_db(az_l, zen_l) / 10))
+            return amp * np.cos(slant[0]), amp * np.sin(slant[0])
+        R = rotation_matrix(bearing_deg, tilt, 0.0)
+        F, _ = element_field(az_deg, zen_deg, slant, R, self.cfg.pattern,
+                             self.cfg.max_gain_dbi, self.cfg.hpbw_deg,
+                             self.cfg.front_back_db)
+        return F[..., 0, 0], F[..., 0, 1]
+
+    def beam_power(self, az_deg, zen_deg, bearing_deg: float, beams,
+                   downtilt_deg: float | None = None):
+        """|AF|^2 of the TXRU's K x L sub-array (K = M / Mp rows, L = N / Np
+        columns of co-polarised elements) for each analog beam, (B, ...).
+
+        ``beams`` are LCS (zenith, azimuth) directions in degrees.  The 2-D
+        DFT virtualisation weights of RP-180524 Appendix 1 eq. (1),
+        w_o(k) = e^{-j 2 pi (k-1) dV cos theta_j} / sqrt(K) and
+        v_s(l) = e^{-j 2 pi (l-1) dH sin theta_j sin phi_i} / sqrt(L), give
+        |AF|^2 = af(psi_V, K) af(psi_H, L) with
+        psi_V = 2 pi dV (cos theta' - cos theta_j) and
+        psi_H = 2 pi dH (sin theta' sin phi' - sin theta_j sin phi_i),
+        peaking at K L on the beam direction.
+        """
+        c = self.cfg
+        k, l = c.M // c.Mp, c.N // c.Np
+        az_l, zen_l = self._local(az_deg, zen_deg, bearing_deg, downtilt_deg)
+        th, ph = np.deg2rad(zen_l), np.deg2rad(az_l)
+        cos_t, sin_t_sin_p = np.cos(th), np.sin(th) * np.sin(ph)
+        out = []
+        for zen_b, az_b in beams:
+            tb, pb = np.deg2rad(zen_b), np.deg2rad(az_b)
+            out.append(af_power(2 * np.pi * c.dV * (cos_t - np.cos(tb)), k)
+                       * af_power(2 * np.pi * c.dH * (sin_t_sin_p
+                                                      - np.sin(tb) * np.sin(pb)), l))
+        return np.stack(out)
 
     def port0_field(self, az_deg, zen_deg, bearing_deg: float,
                     downtilt_deg: float | None = None):
