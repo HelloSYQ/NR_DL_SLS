@@ -28,6 +28,7 @@ Cases, both with CSI every 20 ms that is 4 ms old when used:
   etype2_20ms   Rel-16 eType-II codebook (parameter combination 6)
   svd_sb_20ms   unquantised sub-band SVD of the UT's channel, emulating
                 reciprocity-based precoding with ideal SRS on all UT ports
+  svd_20ms      unquantised wideband SVD (one precoder for the whole band)
 
 Traffic: FTP model 3, 0.5 Mbyte files, Poisson arrivals per UT.  The arrival
 rate of each load is the one that gives NR (MMSE-IRC) 20 / 50 / 70 % RU in
@@ -96,19 +97,13 @@ PUBLISHED_VARIANTS = ("irc-olla", "sic-olla")
 SCREEN_VARIANTS = ("irc-fix", "irc-fix-b", "sic-fix", "sic-fix-a", "sic-fix-b", "sic-fix-ab")
 
 
-def is_sic(variant: str) -> bool:
-    return VARIANTS[variant].get("receiver") == "sic"
-
-
 def nr_reference(variant: str) -> str:
     """The NR run a variant is compared with: NR with the same rank
     adaptation (B), else the published NR run."""
     return "irc-fix-b" if VARIANTS[variant].get("ri_olla") else "irc-olla"
 
 
-NR_REFERENCES = {nr_reference(v) for v in VARIANTS}
-
-CASES = {"etype2_20ms": "etype2", "svd_sb_20ms": "svd_sb"}
+CASES = {"etype2_20ms": "etype2", "svd_sb_20ms": "svd_sb", "svd_20ms": "svd"}
 LOADS = ("20", "50", "70")
 FILE_BYTES = 0.5e6
 CSI_PERIOD_S, CSI_DELAY_S, CHANNEL_UPDATE_S = 20e-3, 4e-3, 2e-3
@@ -164,6 +159,8 @@ def _worker(task):
                 files_counted=r.files_counted, served_se=r.cell_se,
                 upt=rd(r.file_upt_bps), upt_ue=r.file_ue.tolist(),
                 upt_open=rd(r.file_upt_open_bps), upt_open_ue=r.file_ue_open.tolist(),
+                upt_t=[round(float(t), 4) for t in r.file_arrival_s],
+                upt_open_t=[round(float(t), 4) for t in r.file_arrival_open_s],
                 bler_first=r.bler_first, bler_first_cw=list(r.bler_first_cw),
                 mean_rank=r.mean_rank, rank_hist=list(r.rank_hist),
                 mean_codewords=r.mean_codewords, mean_mcs=r.mean_mcs,
@@ -234,15 +231,27 @@ def _pct(x: float, y: float) -> float:
     return 100 * (x / y - 1) if y > 0 else float("nan")
 
 
-def _kpis(recs: list) -> dict:
-    u = np.concatenate([np.array(r["upt"] + r["upt_open"], float) for r in recs])
+def _files(r: dict, drain: int | None = None) -> tuple:
+    """(completed, open) UPTs of a record; with ``drain`` (slots) only the
+    files that arrived before the last ``drain`` slots of the run (records
+    that log arrival times, ``upt_t``; others as run)."""
+    if drain is None or "upt_t" not in r:
+        return r["upt"], r["upt_open"]
+    t_max = (r["n_slots"] - drain) * scenario(r.get("setup", DEFAULT_SETUP)).carrier.slot_duration_s
+    return ([u for u, t in zip(r["upt"], r["upt_t"]) if t < t_max],
+            [u for u, t in zip(r["upt_open"], r["upt_open_t"]) if t < t_max])
+
+
+def _kpis(recs: list, drain: int | None = None) -> dict:
+    fl = [_files(r, drain) for r in recs]
+    u = np.concatenate([np.array(a + b, float) for a, b in fl])
     return {"drops": [r["drop"] for r in recs], "rate": recs[0]["rate"],
             "ru": float(np.mean([r["ru"] for r in recs])),
             "files": int(u.size),
-            "open_files": int(sum(len(r["upt_open"]) for r in recs)),
+            "open_files": int(sum(len(b) for _, b in fl)),
             "upt_mean": float(u.mean()), "upt_p5": float(np.percentile(u, 5)),
             "upt_p50": float(np.percentile(u, 50)), "upt_p95": float(np.percentile(u, 95)),
-            "upt_mean_per_drop": [float(np.mean(r["upt"] + r["upt_open"])) for r in recs],
+            "upt_mean_per_drop": [float(np.mean(a + b)) for a, b in fl],
             "served_se": float(np.mean([r["served_se"] for r in recs])),
             "bler_first": float(np.mean([r["bler_first"] for r in recs])),
             "bler_first_cw": [float(np.mean([r["bler_first_cw"][k] for r in recs
@@ -254,7 +263,7 @@ def _kpis(recs: list) -> dict:
             "runtime_s": float(np.sum([r["runtime_s"] for r in recs]))}
 
 
-def summarize(log: list, setup: str = DEFAULT_SETUP) -> dict:
+def summarize(log: list, setup: str = DEFAULT_SETUP, drain: int | None = None) -> dict:
     """Per (case, load, run length): every variant's schemes against NR
     (MMSE-IRC; with B, NR with B: ``nr_reference``) on the drops both have."""
     groups = {}
@@ -269,14 +278,14 @@ def summarize(log: list, setup: str = DEFAULT_SETUP) -> dict:
         entry = {"case": case, "load": load, "n_slots": slots, "warmup": warmup,
                  "drain": drain, "seed": seed, "variants": {}}
         for (variant, scheme), recs in sorted(by.items()):
-            st = _kpis([recs[d] for d in sorted(recs)])
+            st = _kpis([recs[d] for d in sorted(recs)], drain)
             st["nr_reference"] = ref = nr_reference(variant) if variant in VARIANTS \
                 else "irc-olla"
             base = by.get((ref, "nr"), {})
             common = sorted(set(recs) & set(base))
             if common:
-                m = _kpis([recs[d] for d in common])
-                b = _kpis([base[d] for d in common])
+                m = _kpis([recs[d] for d in common], drain)
+                b = _kpis([base[d] for d in common], drain)
                 st["gain_vs_nr_pct"] = {
                     "drops": common,
                     "upt_mean": _pct(m["upt_mean"], b["upt_mean"]),
@@ -335,6 +344,9 @@ def main() -> int:
                     help="comma-separated JSON-lines logs; new records go to the first")
     ap.add_argument("--out", default=None, help="default: the set-up's summary file")
     ap.add_argument("--summary-only", action="store_true")
+    ap.add_argument("--summary-drain", type=int, default=None,
+                    help="summary: count only files that arrived before the last N slots "
+                         "of each run (runs that log arrival times)")
     args = ap.parse_args()
 
     setup = args.setup
@@ -364,14 +376,16 @@ def main() -> int:
                 for v in args.variants.split(","):
                     for s in args.schemes.split(","):
                         # one codeword: SIC is MMSE-IRC and there is nothing to
-                        # refill, so NR runs only as a reference (irc-olla, irc-fix-b)
-                        if s == "nr" and v not in NR_REFERENCES:
-                            continue
+                        # refill, so NR runs as the variant's reference
+                        # (irc-olla, or irc-fix-b with B)
+                        vr = nr_reference(v) if s == "nr" else v
                         for d in range(args.first_drop, args.first_drop + args.drops):
-                            tasks.append((c, v, s, ld, rates[c]["rates"][ld], d, args.slots,
-                                          args.warmup, args.drain, args.seed, setup))
+                            t = (c, vr, s, ld, rates[c]["rates"][ld], d, args.slots,
+                                 args.warmup, args.drain, args.seed, setup)
+                            if t not in tasks:
+                                tasks.append(t)
         run_tasks(tasks, args.jobs, log_out, log)
-    summ = summarize(log, setup)
+    summ = summarize(log, setup, args.summary_drain)
     print_summary(summ)
     with open(args.out, "w") as fh:
         json.dump(summ, fh, indent=1)

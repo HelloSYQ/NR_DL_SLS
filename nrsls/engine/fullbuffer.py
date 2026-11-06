@@ -194,6 +194,10 @@ class FullBufferResult:
     # UPT (size / (end of run - arrival)), and their UTs
     file_upt_open_bps: np.ndarray = field(default_factory=lambda: np.zeros(0))
     file_ue_open: np.ndarray = field(default_factory=lambda: np.zeros(0, int))
+    # FTP: arrival time [s] of each completed and each open counted file (a
+    # drain can then be applied afterwards: keep files that arrived early enough)
+    file_arrival_s: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    file_arrival_open_s: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
 def _links(d, k):
@@ -496,7 +500,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         t_lo, t_hi = fb.warmup_slots * t_slot, (fb.n_slots - fb.ftp_drain_slots) * t_slot
         files = [[] for _ in range(n_ue)]     # per UT, first in first out
         unsched = np.zeros(n_ue, np.int64)    # bits not yet in a TB
-        n_arrived, files_counted, upt, upt_ue = 0, 0, [], []
+        n_arrived, files_counted, upt, upt_ue, upt_t = 0, 0, [], [], []
         h_all = np.empty((n_ue, k + 1, n_f, n_u, n_s), np.complex64)
         h_block = np.full(n_ue, -1)
         hw_all = np.zeros((n_ue, n_f, n_u, n_s), np.complex128)
@@ -752,6 +756,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                             if f["counted"]:
                                 upt.append(size_bits / ((slot + 1) * t_slot - f["t"]))
                                 upt_ue.append(u)
+                                upt_t.append(f["t"])
             elif tb["ntx"] < fb.harq_max_tx:
                 tb["due"] = slot + fb.harq_rtt_slots
                 harq.append(tb)
@@ -778,8 +783,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     t_meas = (fb.n_slots - fb.warmup_slots) * t_slot
     bw = cfg.channel_bandwidth_hz or n_rb * 12 * scs
     if ftp:
-        still = [(size_bits / (t_end - f["t"]), u) for u in range(n_ue) for f in files[u]
-                 if f["counted"]]
+        still = [(size_bits / (t_end - f["t"]), u, f["t"]) for u in range(n_ue)
+                 for f in files[u] if f["counted"]]
     tput = bits / t_meas
     return FullBufferResult(
         ue_throughput_bps=tput, ue_se=tput / bw,
@@ -804,8 +809,10 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         file_upt_bps=np.array(upt) if ftp else np.zeros(0),
         file_ue=np.array(upt_ue, int) if ftp else np.zeros(0, int),
         files_counted=files_counted if ftp else 0,
-        file_upt_open_bps=np.array([x for x, _ in still]) if ftp else np.zeros(0),
-        file_ue_open=np.array([u for _, u in still], int) if ftp else np.zeros(0, int))
+        file_upt_open_bps=np.array([x for x, _, _ in still]) if ftp else np.zeros(0),
+        file_ue_open=np.array([u for _, u, _ in still], int) if ftp else np.zeros(0, int),
+        file_arrival_s=np.array(upt_t) if ftp else np.zeros(0),
+        file_arrival_open_s=np.array([t for _, _, t in still]) if ftp else np.zeros(0))
 
 
 def _fb_worker(args):

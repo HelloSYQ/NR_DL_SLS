@@ -67,3 +67,30 @@ def test_ftp_options_checked():
         run_full_buffer_drop(cfg, dataclasses.replace(fb, mu_mimo=True, harq_adaptive=False,
                                                       max_rank=2),
                              np.random.default_rng(0))
+
+
+def test_file_arrival_times_allow_a_drain_afterwards():
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "examples"))
+    import cw2lm_ftp_eval as ev
+    # no warm-up, no drain: every file counts, and its arrival time is kept
+    cfg, fb = _small(ftp_rate_per_ue=40.0)
+    fb = dataclasses.replace(fb, warmup_slots=0)
+    r = run_full_buffer_drop(cfg, fb, np.random.default_rng(2))
+    t_end = fb.n_slots * cfg.carrier.slot_duration_s
+    assert r.file_arrival_s.size == r.file_upt_bps.size > 0
+    assert r.file_arrival_open_s.size == r.file_upt_open_bps.size
+    arr = np.concatenate([r.file_arrival_s, r.file_arrival_open_s])
+    assert arr.size == r.files_counted and ((0 <= arr) & (arr < t_end)).all()
+    # the runner's summary-time drain keeps the files that arrived early enough
+    rec = {"n_slots": fb.n_slots, "setup": "10mhz", "upt": r.file_upt_bps.tolist(),
+           "upt_open": r.file_upt_open_bps.tolist(), "upt_t": r.file_arrival_s.tolist(),
+           "upt_open_t": r.file_arrival_open_s.tolist()}
+    slot = ev.scenario("10mhz").carrier.slot_duration_s
+    done, still = ev._files(rec, drain=40)
+    t_max = (fb.n_slots - 40) * slot
+    assert len(done) == int(np.sum(r.file_arrival_s < t_max))
+    assert len(still) == int(np.sum(r.file_arrival_open_s < t_max))
+    assert ev._files(rec) == (rec["upt"], rec["upt_open"])          # no drain: as run
+    assert ev._files({k: v for k, v in rec.items() if k not in ("upt_t", "upt_open_t")},
+                     drain=40) == (rec["upt"], rec["upt_open"])     # old records: as run
