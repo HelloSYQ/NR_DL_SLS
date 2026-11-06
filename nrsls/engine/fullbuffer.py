@@ -29,7 +29,10 @@ layer (``nrdlsim.layer_mapping.layer_groups``).  With more than one
 codeword the report carries per-codeword CQIs, RI maximises the sum over
 codewords, every codeword is its own TB with its own MCS, OLLA loop
 (``olla_per_rank``: also per rank) and HARQ process, and the PF metric sums
-the codewords' rates; see ``engine/link.py`` for retransmissions.  Two
+the codewords' rates; see ``engine/link.py`` for retransmissions
+(``harq_refill``: whether a retransmission refills its decoded codewords).
+``ri_olla`` and ``ri_sic_propagation`` couple the UT's rank selection to
+OLLA and to SIC error propagation (``phy/csi.py``).  Two
 references for comparing mappings: ``receiver='sic'`` (codeword-level
 MMSE-SIC: the codewords are decoded in index order, each one that decodes
 is cancelled, and the CQIs are reported for it) and ``ideal_la`` (each new
@@ -114,6 +117,21 @@ class FullBufferConfig:
     # a refilled codeword its first-transmission CQI); True re-precodes the
     # PDSCH with the UT's current report if its rank matches
     harq_adaptive: bool = False
+    # multi-codeword retransmissions: 'fresh' refills a decoded codeword's
+    # layers with a new TB only if the UT's current report has the
+    # transmission's rank and the UT has data left (FTP), else disables the
+    # codeword and retransmits the rest alone (engine/link.py
+    # retransmission); 'always' refills every decoded codeword, even with
+    # stale CSI or padding only, which can keep a transmission in HARQ for
+    # hundreds of slots (the behaviour before 2026-11-06)
+    harq_refill: str = "fresh"
+    # rank adaptation (phy/csi.py): ri_olla makes the UT's RI metric use its
+    # CQIs after the gNB's OLLA offsets (per rank with olla_per_rank), an
+    # idealised coupling of rank adaptation and OLLA; ri_sic_propagation
+    # weights codeword k of a SIC receiver by (1 - target_bler)^k, the
+    # chance that the codewords before it decode
+    ri_olla: bool = False
+    ri_sic_propagation: bool = False
     # SU receiver: 'irc' (MMSE-IRC) or 'sic' (codeword-level MMSE-SIC, ideal
     # cancellation of the codewords that decode, decoded in index order; the
     # UT reports each codeword's CQI after the earlier ones are cancelled).
@@ -336,10 +354,13 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     if fb.receiver not in ("irc", "sic"):
         raise ValueError("receiver must be 'irc' or 'sic'")
     if fb.mu_mimo and (max_cw > 1 or fb.olla_per_rank or fb.harq_adaptive
-                       or fb.receiver != "irc" or fb.ideal_la or fb.olla_sic_conditional):
-        raise ValueError("multi-codeword mappings, per-rank OLLA, adaptive HARQ, SIC "
-                         "and ideal link adaptation are SU-MIMO only")
+                       or fb.receiver != "irc" or fb.ideal_la or fb.olla_sic_conditional
+                       or fb.ri_olla):
+        raise ValueError("multi-codeword mappings, per-rank OLLA, adaptive HARQ, SIC, "
+                         "OLLA-corrected RI and ideal link adaptation are SU-MIMO only")
     sic = fb.receiver == "sic" and max_cw > 1
+    if fb.harq_refill not in ("fresh", "always"):
+        raise ValueError("harq_refill must be 'fresh' or 'always'")
     if fb.traffic not in ("full_buffer", "ftp3"):
         raise ValueError("traffic must be 'full_buffer' or 'ftp3'")
     ftp = fb.traffic == "ftp3"
@@ -447,7 +468,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                         n_beams=fb.n_beams, score_step=fb.pmi_score_step,
                         etype2_combo=fb.etype2_combo,
                         pmi_subband=fb.type1_subband_pmi,
-                        max_codewords=max_cw, sic=sic)
+                        max_codewords=max_cw, sic=sic,
+                        ri_sic_propagation=fb.ri_sic_propagation)
     pending = [[] for _ in range(n_ue)]                   # (avail, report, sinr_sb)
     current = [None] * n_ue
     pf_avg = np.full(n_ue, 1.0)
@@ -531,8 +553,15 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                         tb["col"] = np.zeros(n_rbg, int)
                         nrm = np.linalg.norm(tb["w"], axis=(1, 2), keepdims=True)
                         tb["w"] = np.where(nrm > 0, tb["w"] / np.maximum(nrm, 1e-12), 0)
+                    cur = current[tb["ue"]]
+                    if fb.harq_refill == "always":
+                        refill, budget = True, None
+                    else:
+                        refill = (cur is not None and cur[0].rank == tb["rank"]
+                                  and not tb.get("reduced", False))
+                        budget = int(unsched[tb["ue"]]) if ftp else None
                     txs += retransmission(la, unit, rb_per_rbg, n_re, fb.mcs_table, slot,
-                                          current[tb["ue"]] if fb.harq_adaptive else None)
+                                          cur if fb.harq_adaptive else None, refill, budget)
                 else:
                     for t in unit:
                         t["due"] = slot + 1
@@ -574,12 +603,15 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
             elif not ftp and not any(t["cell"] == c for t in txs) and ue_of_cell[c].size:
                 g = rng.normal(size=(n_s,)) + 1j * rng.normal(size=(n_s,))
                 w_cell[c, :, :, 0] = g / np.linalg.norm(g)
+        placed = set()                        # multi-codeword transmissions
         for tb in txs:
             if fb.mu_mimo:
                 for b in tb["rbgs"]:
                     fm, o = rbg_mask[b], tb["col"][b]
                     w_cell[tb["cell"], fm, :, o:o + tb["rank"]] = tb["w"][fm]
-            elif tb.get("cw", 0) == 0:        # codewords share the precoder
+            elif tb.get("tx") not in placed:  # codewords share the precoder
+                if "tx" in tb:
+                    placed.add(tb["tx"])
                 fm = rbg_mask[tb["rbgs"]].any(axis=0)
                 w_cell[tb["cell"], fm, :, :tb["rank"]] = tb_precoder(tb, fm, rbg_f)
 
@@ -732,7 +764,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         # 4. CSI reports
         if slot % fb.csi_period_slots == 0:
             for u in range(n_ue):
-                rep = proc.select(hw[u], rbg_f, fb.rb_step, slot)
+                rep = proc.select(hw[u], rbg_f, fb.rb_step, slot,
+                                  la.offset_table(u) if fb.ri_olla else None)
                 bits_log.append(rep.pmi_bits)
                 if max_cw == 1:
                     sinr_sb = la.cqi_sinr_db(rep.cqi_sb, rep.rank, fb.rbg_size)

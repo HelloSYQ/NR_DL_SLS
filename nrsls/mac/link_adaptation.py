@@ -80,6 +80,17 @@ class LinkAdaptation:
         ok = np.nonzero(reqs <= eff + 1e-9)[0]
         return int(ok[-1]) if ok.size else 0
 
+    def offset_table(self, ue: int, max_rank: int = 4) -> np.ndarray:
+        """The UT's OLLA offsets [dB] as (max_rank + 1, n_cw), indexed by
+        transmission rank and codeword (the same for every rank without
+        ``per_rank``)."""
+        o = self.offset[ue]
+        if self.offset.ndim == 1:
+            return np.full((max_rank + 1, 1), float(o))
+        if self.per_rank:
+            return np.asarray(o, float)
+        return np.broadcast_to(o[0], (max_rank + 1, o.shape[1]))
+
     def update(self, ue: int, ack: bool, cw: int = 0, tx_rank: int | None = None):
         k = self._key(ue, cw, tx_rank)
         self.offset[k] += -self.step_ack if ack else self.step_nack

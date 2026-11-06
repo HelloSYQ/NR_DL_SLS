@@ -90,7 +90,10 @@ def fb_config(case: str, variant: str, scheme: str, slots: int, warmup: int
         extra["ideal_la"] = True
     if cond:
         extra["olla_sic_conditional"] = True
-    return FullBufferConfig(**cases(slots, warmup)[case], cw_mapping=scheme, **extra)
+    # the published results refilled every decoded codeword (harq_refill
+    # 'always', the behaviour before 2026-11-06)
+    return FullBufferConfig(**cases(slots, warmup)[case], cw_mapping=scheme,
+                            harq_refill="always", **extra)
 
 
 def _commit() -> str:

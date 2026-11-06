@@ -32,6 +32,14 @@ covariance of the measurement slot (TS 38.214 clause 5.2.2.1).
     single codeword, see plain MMSE-IRC.
   * RI: the rank that maximises sum_CW layers(CW) x spectral efficiency of
     the codeword's wideband CQI, i.e. rank x SE(CQI) with one codeword.
+    Two options for the codeword-mapping study, neither changing the
+    reported CQIs:
+      - ``ri_offsets`` (per call): the RI metric takes each codeword's CQI
+        after subtracting an offset per rank and codeword, the gNB's OLLA
+        offsets (an idealised coupling of rank adaptation and OLLA);
+      - ``ri_sic_propagation``: with SIC, codeword k only decodes if the
+        codewords before it did, so its term is weighted by
+        (1 - target BLER)^k.
 """
 
 from __future__ import annotations
@@ -98,12 +106,13 @@ class CSIProcessor:
                  n_re_per_rb: int = 144, n_beams: int = 4,
                  score_step: int = 1, etype2_combo: int = 6,
                  pmi_subband: bool = True, max_codewords: int = 1,
-                 sic: bool = False):
+                 sic: bool = False, ri_sic_propagation: bool = False):
         self.n1, self.n2, self.o1, self.o2 = n1, n2, o1, o2
         self.codebook = codebook
         self.max_rank = max_rank
         self.max_codewords = max_codewords
         self.sic = sic
+        self.ri_sic_propagation = ri_sic_propagation
         self.cqi_table = mcs_tables.MCS_TO_CQI_TABLE[mcs_table]
         self.target_bler = target_bler
         self.n_re_per_rb = n_re_per_rb
@@ -116,12 +125,12 @@ class CSIProcessor:
                            for i in range(1, 16)})
 
     # --- CQI ---------------------------------------------------------------
-    def _cqi(self, sinr_lin, rank, n_rb):
+    def _cqi(self, sinr_lin, rank, n_rb, offset_db=0.0):
         eff = {q: effective_sinr_miesm(sinr_lin, q) for q in self.qms}
         reqs = cqi_required_sinr_db(self.cqi_table, rank, self.target_bler,
                                     self.n_re_per_rb, max(int(n_rb), 1))
         for i in range(15, 0, -1):
-            if eff[mcs_tables.get_cqi(i, self.cqi_table)[0]] >= reqs[i - 1]:
+            if eff[mcs_tables.get_cqi(i, self.cqi_table)[0]] - offset_db >= reqs[i - 1]:
                 return i
         return 0
 
@@ -179,18 +188,23 @@ class CSIProcessor:
             (tuple(int(x) for x in idx[best_g, 3]),)
         return ws[best_g], pmi
 
-    def _wideband_cqi(self, sinr, rank, n_rb):
+    def _wideband_cqi(self, sinr, rank, n_rb, offsets=None):
         """(layer groups, wideband CQI per codeword, RI metric) of one rank:
         the metric is sum_CW layers x SE(CQI_CW), rank x SE(CQI) for one
-        codeword."""
+        codeword.  ``offsets`` (max_rank + 1, n_cw) [dB]: the metric's CQIs
+        are those after subtracting offsets[rank, cw] (the CQIs returned
+        are not)."""
         groups = layer_groups(rank, self.max_codewords)
-        if len(groups) == 1:
-            cqi_wb = self._cqi(sinr, rank, n_rb)
-            se = mcs_tables.get_cqi(cqi_wb, self.cqi_table)[2]
-            return groups, (cqi_wb,), rank * se
-        cqi = tuple(self._cqi(sinr[:, g], len(g), n_rb) for g in groups)
-        metric = sum(len(g) * mcs_tables.get_cqi(q, self.cqi_table)[2]
-                     for g, q in zip(groups, cqi))
+        cols = [slice(None)] if len(groups) == 1 else groups
+        cqi = tuple(self._cqi(sinr[:, c], len(g), n_rb) for c, g in zip(cols, groups))
+        if offsets is None:
+            cqi_ri = cqi
+        else:
+            cqi_ri = tuple(self._cqi(sinr[:, c], len(g), n_rb, float(offsets[rank, k]))
+                           for k, (c, g) in enumerate(zip(cols, groups)))
+        keep = (1 - self.target_bler) if self.sic and self.ri_sic_propagation else 1.0
+        metric = sum(keep ** k * len(g) * mcs_tables.get_cqi(q, self.cqi_table)[2]
+                     for k, (g, q) in enumerate(zip(groups, cqi_ri)))
         return groups, cqi, metric
 
     def _layer_sinr(self, g, rank):
@@ -241,8 +255,10 @@ class CSIProcessor:
         return w, pmi, self._layer_sinr(hw @ w_f, rank), bits      # sinr (F, r)
 
     def select(self, hw: np.ndarray, subband_of_f: np.ndarray, rb_per_f: int,
-               slot: int) -> CSIReport:
-        """CSI from whitened serving channels hw (F, U, S)."""
+               slot: int, ri_offsets: np.ndarray | None = None) -> CSIReport:
+        """CSI from whitened serving channels hw (F, U, S); ``ri_offsets``
+        (max_rank + 1, n_cw) [dB] corrects the RI metric's CQIs (module
+        doc)."""
         n_f = hw.shape[0]
         best = None
         if self.codebook == "etype2" and self._et2 is None:
@@ -254,7 +270,8 @@ class CSIProcessor:
             if p is None:
                 continue
             w, pmi, sinr, bits = p
-            groups, cqi_cw, metric = self._wideband_cqi(sinr, rank, n_f * rb_per_f)
+            groups, cqi_cw, metric = self._wideband_cqi(sinr, rank, n_f * rb_per_f,
+                                                        ri_offsets)
             if best is None or metric > best[0]:
                 best = (metric, rank, w, pmi, sinr, groups, cqi_cw, bits)
         _, rank, w, pmi, sinr, groups, cqi_cw, bits = best

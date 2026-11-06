@@ -11,7 +11,17 @@ Schemes (``cw_mapping``, layers per codeword at rank 1-4):
 
 Variants: ``irc-olla`` (MMSE-IRC, OLLA per codeword: nr, lte, per_layer) and
 ``sic-olla`` (codeword-level MMSE-SIC, plain OLLA per codeword: lte,
-per_layer; with one codeword SIC is MMSE-IRC, so NR is the IRC run).
+per_layer; with one codeword SIC is MMSE-IRC, so NR is the IRC run).  These
+two are the published runs and refill every decoded codeword of a
+retransmission (``harq_refill='always'``).  The screening variants of
+2026-11-06 (docs/cw2lm-ftp-screen.md) add:
+
+  *-fix     harq_refill='fresh': refill a decoded codeword only with the UT's
+            current CSI at the transmission's rank and data in its buffer,
+            else retransmit the failed codewords alone
+  *-a       SIC: the RI metric weights codeword k by 0.9^k (error propagation)
+  *-b       per-rank OLLA and an RI metric on the OLLA-corrected CQIs; the NR
+            reference of a -b variant is NR with B (irc-fix-b)
 
 Cases, both with CSI every 20 ms that is 4 ms old when used:
 
@@ -73,7 +83,31 @@ from nrsls.engine.fullbuffer import FullBufferConfig, run_full_buffer_drop  # no
 OUT = os.path.join(os.path.dirname(__file__), "..", "results")
 RATES = os.path.join(OUT, "cw2lm_ftp_rates.json")
 SCHEMES = ("nr", "lte", "per_layer")
-VARIANTS = {"irc-olla": "irc", "sic-olla": "sic"}
+# variant -> FullBufferConfig overrides (module doc)
+_LEGACY = {"harq_refill": "always"}
+_SIC = {"receiver": "sic"}
+_A = {"ri_sic_propagation": True}
+_B = {"olla_per_rank": True, "ri_olla": True}
+VARIANTS = {"irc-olla": dict(_LEGACY), "sic-olla": dict(_SIC, **_LEGACY),
+            "irc-fix": {}, "irc-fix-b": dict(_B),
+            "sic-fix": dict(_SIC), "sic-fix-a": dict(_SIC, **_A),
+            "sic-fix-b": dict(_SIC, **_B), "sic-fix-ab": dict(_SIC, **_A, **_B)}
+PUBLISHED_VARIANTS = ("irc-olla", "sic-olla")
+SCREEN_VARIANTS = ("irc-fix", "irc-fix-b", "sic-fix", "sic-fix-a", "sic-fix-b", "sic-fix-ab")
+
+
+def is_sic(variant: str) -> bool:
+    return VARIANTS[variant].get("receiver") == "sic"
+
+
+def nr_reference(variant: str) -> str:
+    """The NR run a variant is compared with: NR with the same rank
+    adaptation (B), else the published NR run."""
+    return "irc-fix-b" if VARIANTS[variant].get("ri_olla") else "irc-olla"
+
+
+NR_REFERENCES = {nr_reference(v) for v in VARIANTS}
+
 CASES = {"etype2_20ms": "etype2", "svd_sb_20ms": "svd_sb"}
 LOADS = ("20", "50", "70")
 FILE_BYTES = 0.5e6
@@ -106,7 +140,7 @@ def _slots(setup: str, seconds: float) -> int:
 
 def fb_config(case: str, variant: str, scheme: str, rate: float, slots: int, warmup: int,
               drain: int, setup: str = DEFAULT_SETUP) -> FullBufferConfig:
-    extra = {"receiver": "sic"} if VARIANTS[variant] == "sic" else {}
+    extra = VARIANTS[variant]
     return FullBufferConfig(
         n_slots=slots, warmup_slots=warmup, codebook=CASES[case], max_rank=4, rbg_size=4,
         channel_update_slots=_slots(setup, CHANNEL_UPDATE_S),
@@ -222,7 +256,7 @@ def _kpis(recs: list) -> dict:
 
 def summarize(log: list, setup: str = DEFAULT_SETUP) -> dict:
     """Per (case, load, run length): every variant's schemes against NR
-    (MMSE-IRC) on the drops both have."""
+    (MMSE-IRC; with B, NR with B: ``nr_reference``) on the drops both have."""
     groups = {}
     for r in log:
         if r["load"] not in LOADS or r.get("setup", DEFAULT_SETUP) != setup:
@@ -232,11 +266,13 @@ def summarize(log: list, setup: str = DEFAULT_SETUP) -> dict:
     out = []
     for g, by in sorted(groups.items()):
         case, load, slots, warmup, drain, seed = g
-        base = by.get(("irc-olla", "nr"), {})
         entry = {"case": case, "load": load, "n_slots": slots, "warmup": warmup,
                  "drain": drain, "seed": seed, "variants": {}}
         for (variant, scheme), recs in sorted(by.items()):
             st = _kpis([recs[d] for d in sorted(recs)])
+            st["nr_reference"] = ref = nr_reference(variant) if variant in VARIANTS \
+                else "irc-olla"
+            base = by.get((ref, "nr"), {})
             common = sorted(set(recs) & set(base))
             if common:
                 m = _kpis([recs[d] for d in common])
@@ -278,7 +314,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--setup", default=DEFAULT_SETUP, choices=list(SETUPS))
     ap.add_argument("--cases", default=",".join(CASES))
-    ap.add_argument("--variants", default=",".join(VARIANTS))
+    ap.add_argument("--variants", default=",".join(PUBLISHED_VARIANTS))
     ap.add_argument("--schemes", default=",".join(SCHEMES))
     ap.add_argument("--loads", default=",".join(LOADS))
     ap.add_argument("--drops", type=int, default=5)
@@ -327,8 +363,10 @@ def main() -> int:
             for ld in args.loads.split(","):
                 for v in args.variants.split(","):
                     for s in args.schemes.split(","):
-                        if s == "nr" and VARIANTS[v] == "sic":
-                            continue                   # one codeword: SIC = MMSE-IRC
+                        # one codeword: SIC is MMSE-IRC and there is nothing to
+                        # refill, so NR runs only as a reference (irc-olla, irc-fix-b)
+                        if s == "nr" and v not in NR_REFERENCES:
+                            continue
                         for d in range(args.first_drop, args.first_drop + args.drops):
                             tasks.append((c, v, s, ld, rates[c]["rates"][ld], d, args.slots,
                                           args.warmup, args.drain, args.seed, setup))

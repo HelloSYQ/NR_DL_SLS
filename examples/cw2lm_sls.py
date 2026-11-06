@@ -106,9 +106,10 @@ def main() -> int:
     for case in args.cases.split(","):
         for harq in args.harq.split(","):
             for m in args.mappings.split(","):
+                # harq_refill 'always': the behaviour the published results had
                 fb = FullBufferConfig(**all_cases[case], cw_mapping=m,
                                       olla_per_rank=args.olla_per_rank,
-                                      harq_adaptive=HARQ[harq])
+                                      harq_adaptive=HARQ[harq], harq_refill="always")
                 tasks += [((case, harq, m), cfg, fb, args.seed, i) for i in range(args.drops)]
     t0 = time.time()
     drops = {}

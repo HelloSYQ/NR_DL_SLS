@@ -9,7 +9,10 @@ With several codewords a transmission carries one TB per codeword (keys
 precoder, and each has its own MCS, TBS (TS 38.214 5.1.3.2 with the
 codeword's layers), OLLA loop and HARQ process.  A retransmission resends
 the failed codewords on their layers and refills the decoded ones with new
-TBs (each TB has its own NDI), on the same RBGs, rank and precoder.
+TBs (each TB has its own NDI), on the same RBGs, rank and precoder; or, when
+the caller does not refill (stale CSI, empty buffer), disables the decoded
+codewords and sends the failed ones alone on fewer layers
+(:func:`retransmission`).
 
 Two references for the codeword-mapping study: a codeword-level SIC
 receiver (:func:`sic_layer_sinr`: the codewords of a transmission are
@@ -145,17 +148,30 @@ def harq_units(tbs: list) -> list:
 
 
 def retransmission(la, unit: list, rb_per_rbg: np.ndarray, n_re: int, mcs_table: int,
-                   slot: int, cur=None) -> list:
-    """TBs of a HARQ retransmission: the due TBs of ``unit`` again, and a new
-    TB on every other codeword (decoded, or dropped after the last
-    transmission) with the MCS from its first-transmission CQI.
+                   slot: int, cur=None, refill: bool = True, budget: int | None = None
+                   ) -> list:
+    """TBs of a HARQ retransmission: the due TBs of ``unit`` again and, with
+    ``refill``, a new TB on every other codeword (decoded, or dropped after
+    the last transmission) with the MCS from its first-transmission CQI,
+    while the UT's ``budget`` of unscheduled bits lasts (None: unlimited;
+    each refill takes its TBS from it).
 
     Adaptive HARQ (``cur`` = the UT's current (report, sub-band SINRs)): if
     the current report has the transmission's rank, the whole PDSCH takes
     its precoder (DM-RS makes precoding transparent to the UT) and the new
     TBs its per-codeword CQIs; RBGs, rank and the retransmitted TBs' MCS
-    stay."""
-    if cur is not None and cur[0].rank == unit[0]["rank"]:
+    stay.
+
+    A codeword that is neither due nor refilled is disabled (as NR's DCI
+    disables a TB): the PDSCH then carries only the remaining codewords'
+    layers, at full power, and the transmission is *reduced* (key
+    ``reduced``): it is never refilled again and ends when its codewords
+    do.  A reduced PDSCH takes the current report's strongest layers if
+    ``cur`` is given and the report has enough of them, else the remaining
+    columns of its precoder.  The TBs keep their MCS and TBS, and chase
+    combining continues on the layers they move to."""
+    reduced = unit[0].get("reduced", False)
+    if cur is not None and not reduced and cur[0].rank == unit[0]["rank"]:
         rep, sinr_sb = cur[0], cur[1]
         for tb in unit:
             tb["w"], tb["w_per_f"] = rep.w, rep.w_per_f
@@ -164,8 +180,32 @@ def retransmission(la, unit: list, rb_per_rbg: np.ndarray, n_re: int, mcs_table:
     if "tx" not in unit[0]:
         return unit
     due = {tb["cw"]: tb for tb in unit}
-    return [due[k] if k in due else cw_tb(la, unit[0], k, rb_per_rbg, n_re, mcs_table, slot)
-            for k in range(len(unit[0]["groups"]))]
+    out = []
+    for k in range(len(unit[0]["groups"])):
+        if k in due:
+            out.append(due[k])
+        elif refill and not reduced and (budget is None or budget > 0):
+            tb = cw_tb(la, unit[0], k, rb_per_rbg, n_re, mcs_table, slot)
+            out.append(tb)
+            if budget is not None:
+                budget -= tb["bits"]
+    rank = unit[0]["rank"]
+    active = sorted(layer for tb in out for layer in tb["layers"])
+    if len(active) == rank and not reduced:
+        return out
+    n = len(active)
+    if cur is not None and cur[0].rank >= n:
+        rep = cur[0]
+        w, w_per_f = rep.w[..., :n] * np.sqrt(rep.rank / n), rep.w_per_f
+    elif n < rank:
+        w, w_per_f = unit[0]["w"][..., active] * np.sqrt(rank / n), unit[0]["w_per_f"]
+    else:
+        w, w_per_f = unit[0]["w"], unit[0]["w_per_f"]
+    pos = {layer: i for i, layer in enumerate(active)}
+    for tb in out:
+        tb.update(w=w, w_per_f=w_per_f, rank=n, reduced=True,
+                  layers=[pos[layer] for layer in tb["layers"]])
+    return out
 
 
 def decode_tb(tb: dict, hw_u: np.ndarray, fm: np.ndarray, rbg_f: np.ndarray,
