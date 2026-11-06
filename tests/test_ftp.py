@@ -92,5 +92,12 @@ def test_file_arrival_times_allow_a_drain_afterwards():
     assert len(done) == int(np.sum(r.file_arrival_s < t_max))
     assert len(still) == int(np.sum(r.file_arrival_open_s < t_max))
     assert ev._files(rec) == (rec["upt"], rec["upt_open"])          # no drain: as run
+    # ... and summarize() applies it (the run's own drain field must not mask it)
+    base = dict(rec, case="svd_sb_20ms", load="20", rate=1.0, drop=0, warmup=0, drain=0,
+                seed=1, ru=0.2, served_se=1.0, bler_first=0.1, bler_first_cw=[0.1],
+                mean_rank=2.0, rank_hist=[0, 1, 0, 0], retx_rbg_fraction=0.0, runtime_s=1.0)
+    log = [dict(base, variant="irc-olla", scheme="nr"), dict(base, variant="irc-fix", scheme="lte")]
+    e = ev.summarize(log, "10mhz", drain=40)["configurations"][0]
+    assert e["variants"]["irc-olla"]["nr"]["files"] == len(done) + len(still)
     assert ev._files({k: v for k, v in rec.items() if k not in ("upt_t", "upt_open_t")},
                      drain=40) == (rec["upt"], rec["upt_open"])     # old records: as run

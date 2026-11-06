@@ -274,9 +274,11 @@ def summarize(log: list, setup: str = DEFAULT_SETUP, drain: int | None = None) -
         groups.setdefault(g, {}).setdefault((r["variant"], r["scheme"]), {})[r["drop"]] = r
     out = []
     for g, by in sorted(groups.items()):
-        case, load, slots, warmup, drain, seed = g
+        case, load, slots, warmup, run_drain, seed = g
         entry = {"case": case, "load": load, "n_slots": slots, "warmup": warmup,
-                 "drain": drain, "seed": seed, "variants": {}}
+                 "drain": run_drain, "seed": seed, "variants": {}}
+        if drain is not None:
+            entry["summary_drain"] = drain
         for (variant, scheme), recs in sorted(by.items()):
             st = _kpis([recs[d] for d in sorted(recs)], drain)
             st["nr_reference"] = ref = nr_reference(variant) if variant in VARIANTS \
