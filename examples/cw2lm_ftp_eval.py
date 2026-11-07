@@ -30,6 +30,10 @@ Cases, both with CSI every 20 ms that is 4 ms old when used:
                 reciprocity-based precoding with ideal SRS on all UT ports
   svd_20ms      unquantised wideband SVD (one precoder for the whole band)
 
+Set-up ``20mhz-ftp1`` runs FTP model 1 instead (UTs arrive at random places as
+a Poisson process per cell, download one file and leave; a pool of 20 UTs per
+cell serves the arrivals; rates in UT arrivals per second per cell).
+
 Traffic: FTP model 3, 0.5 Mbyte files, Poisson arrivals per UT.  The arrival
 rate of each load is the one that gives NR (MMSE-IRC) 20 / 50 / 70 % RU in
 that case, found with ``--calibrate`` on drop 0 and kept in
@@ -83,7 +87,7 @@ from nrsls.engine.fullbuffer import FullBufferConfig, run_full_buffer_drop  # no
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "results")
 RATES = os.path.join(OUT, "cw2lm_ftp_rates.json")
-SCHEMES = ("nr", "lte", "per_layer")
+SCHEMES = ("nr", "lte", "per_layer", "lte_twisted")
 # variant -> FullBufferConfig overrides (module doc)
 _LEGACY = {"harq_refill": "always"}
 _SIC = {"receiver": "sic"}
@@ -120,6 +124,17 @@ SETUPS = {
                   cal_rates=(0.65, 0.85, 1.3, 1.5, 1.75, 2.0),
                   carrier="4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB)",
                   power="44 dBm per 20 MHz"),
+    # FTP model 1: a pool of 20 UTs per cell for the arriving users; rates
+    # are UT (file) arrivals per second per cell
+    "20mhz-ftp1": dict(preset=dict(carrier=CarrierConfig(mu=1, n_size_grid=52),
+                                   bs_tx_power_dbm=44.0, channel_bandwidth_hz=20e6,
+                                   ue_per_cell=20),
+                       traffic="ftp1",
+                       rates=os.path.join(OUT, "cw2lm_ftp1_rates_20mhz.json"),
+                       out=os.path.join(OUT, "cw2lm_ftp1_20mhz.json"),
+                       cal_rates=(5.0, 8.0, 11.0, 14.0, 17.0, 20.0),
+                       carrier="4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB)",
+                       power="44 dBm per 20 MHz"),
 }
 CAL_RATES = SETUPS[DEFAULT_SETUP]["cal_rates"]
 
@@ -141,8 +156,15 @@ def fb_config(case: str, variant: str, scheme: str, rate: float, slots: int, war
         channel_update_slots=_slots(setup, CHANNEL_UPDATE_S),
         csi_period_slots=_slots(setup, CSI_PERIOD_S),
         csi_delay_slots=_slots(setup, CSI_DELAY_S), pdcch_symbols=2,
-        overhead_re_per_prb=9, harq_adaptive=True, cw_mapping=scheme, traffic="ftp3",
-        ftp_file_bytes=FILE_BYTES, ftp_rate_per_ue=rate, ftp_drain_slots=drain, **extra)
+        overhead_re_per_prb=9, harq_adaptive=True, cw_mapping=scheme,
+        ftp_file_bytes=FILE_BYTES, ftp_drain_slots=drain, **_traffic(setup, rate), **extra)
+
+
+def _traffic(setup: str, rate: float) -> dict:
+    """FTP model 3: ``rate`` files/s per UT; FTP model 1: UTs/s per cell."""
+    if SETUPS[setup].get("traffic", "ftp3") == "ftp1":
+        return {"traffic": "ftp1", "ftp1_rate_per_cell": rate}
+    return {"traffic": "ftp3", "ftp_rate_per_ue": rate}
 
 
 def _worker(task):
@@ -164,7 +186,9 @@ def _worker(task):
                 bler_first=r.bler_first, bler_first_cw=list(r.bler_first_cw),
                 mean_rank=r.mean_rank, rank_hist=list(r.rank_hist),
                 mean_codewords=r.mean_codewords, mean_mcs=r.mean_mcs,
-                retx_rbg_fraction=r.retx_rbg_fraction)
+                retx_rbg_fraction=r.retx_rbg_fraction,
+                mean_active_ues=round(r.mean_active_ues, 3),
+                arrivals_blocked=r.arrivals_blocked)
 
 
 def _key(rec) -> tuple:
@@ -260,6 +284,8 @@ def _kpis(recs: list, drain: int | None = None) -> dict:
             "mean_rank": float(np.mean([r["mean_rank"] for r in recs])),
             "rank_hist": np.mean([r["rank_hist"] for r in recs], axis=0).tolist(),
             "retx_rbg_fraction": float(np.mean([r["retx_rbg_fraction"] for r in recs])),
+            "mean_active_ues": float(np.mean([r.get("mean_active_ues", 0.0) for r in recs])),
+            "arrivals_blocked": int(sum(r.get("arrivals_blocked", 0) for r in recs)),
             "runtime_s": float(np.sum([r["runtime_s"] for r in recs]))}
 
 
@@ -298,7 +324,8 @@ def summarize(log: list, setup: str = DEFAULT_SETUP, drain: int | None = None) -
             entry["variants"].setdefault(variant, {})[scheme] = st
         out.append(entry)
     car = scenario(setup).carrier
-    return {"scenario": "Dense Urban-eMBB A (du-a)", "traffic": "FTP model 3",
+    model = "FTP model 1" if SETUPS[setup].get("traffic") == "ftp1" else "FTP model 3"
+    return {"scenario": "Dense Urban-eMBB A (du-a)", "traffic": model,
             "file_bytes": FILE_BYTES, "max_rank": 4, "harq": "adaptive", "setup": setup,
             "carrier": SETUPS[setup]["carrier"], "power": SETUPS[setup]["power"],
             "slot_ms": car.slot_duration_s * 1e3, "configurations": out}

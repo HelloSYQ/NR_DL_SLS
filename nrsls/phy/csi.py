@@ -61,6 +61,17 @@ from .codebook.type1 import TypeICodebook, _v
 from .sinr import capacity, mmse_sinr
 
 
+def cw_layer_groups(rank: int, max_codewords: int, mapping: str | None = None) -> list:
+    """Layers of each codeword at ``rank``: nrdlsim's even split into up to
+    ``max_codewords`` contiguous groups, or for ``mapping`` 'lte_twisted'
+    ('alt2t') the LTE split except at rank 4, where codeword 0 takes layer 0
+    (the strongest: SVD and eType-II precoders order the layers by
+    singular value) and codeword 1 layers 1-3."""
+    if mapping in ("lte_twisted", "alt2t") and rank == 4:
+        return [[0], [1, 2, 3]]
+    return layer_groups(rank, max_codewords)
+
+
 @dataclass
 class CSIReport:
     rank: int
@@ -106,13 +117,15 @@ class CSIProcessor:
                  n_re_per_rb: int = 144, n_beams: int = 4,
                  score_step: int = 1, etype2_combo: int = 6,
                  pmi_subband: bool = True, max_codewords: int = 1,
-                 sic: bool = False, ri_sic_propagation: bool = False):
+                 sic: bool = False, ri_sic_propagation: bool = False,
+                 cw_mapping: str | None = None):
         self.n1, self.n2, self.o1, self.o2 = n1, n2, o1, o2
         self.codebook = codebook
         self.max_rank = max_rank
         self.max_codewords = max_codewords
         self.sic = sic
         self.ri_sic_propagation = ri_sic_propagation
+        self.cw_mapping = cw_mapping
         self.cqi_table = mcs_tables.MCS_TO_CQI_TABLE[mcs_table]
         self.target_bler = target_bler
         self.n_re_per_rb = n_re_per_rb
@@ -194,7 +207,7 @@ class CSIProcessor:
         codeword.  ``offsets`` (max_rank + 1, n_cw) [dB]: the metric's CQIs
         are those after subtracting offsets[rank, cw] (the CQIs returned
         are not)."""
-        groups = layer_groups(rank, self.max_codewords)
+        groups = cw_layer_groups(rank, self.max_codewords, self.cw_mapping)
         cols = [slice(None)] if len(groups) == 1 else groups
         cqi = tuple(self._cqi(sinr[:, c], len(g), n_rb) for c, g in zip(cols, groups))
         if offsets is None:
@@ -212,7 +225,8 @@ class CSIProcessor:
         effective channel g = H~ W (F, U, r): MMSE-IRC over all layers, or
         with ``sic`` each codeword's layers after the earlier codewords are
         cancelled."""
-        groups = layer_groups(rank, self.max_codewords) if self.sic else ()
+        groups = (cw_layer_groups(rank, self.max_codewords, self.cw_mapping) if self.sic
+                  else ())
         if len(groups) < 2:
             return mmse_sinr(g)
         out = np.empty(g.shape[:-2] + (rank,))

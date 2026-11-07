@@ -80,6 +80,10 @@ class LinkAdaptation:
         ok = np.nonzero(reqs <= eff + 1e-9)[0]
         return int(ok[-1]) if ok.size else 0
 
+    def reset(self, ue: int) -> None:
+        """A new UT (FTP model 1): all its loops start from zero."""
+        self.offset[ue] = 0.0
+
     def offset_table(self, ue: int, max_rank: int = 4) -> np.ndarray:
         """The UT's OLLA offsets [dB] as (max_rank + 1, n_cw), indexed by
         transmission rank and codeword (the same for every rank without

@@ -152,14 +152,24 @@ class FullBufferConfig:
     ftp_rate_per_ue: float = 0.0
     # FTP: files arriving in the last ftp_drain_slots are served, not counted
     ftp_drain_slots: int = 0
+    # 'ftp1', FTP model 1 (TR 36.814 A.2.1.3.1): UTs arrive as a Poisson process
+    # of ftp1_rate_per_cell per cell, at uniformly random places, each
+    # downloads one file of ftp_file_bytes and leaves.  An arrival takes an
+    # idle UT of the drop (a pool of ue_per_cell per cell, which should be
+    # well above the number of UTs active at once) and starts it with fresh
+    # OLLA and an aperiodic CSI report
+    ftp1_rate_per_cell: float = 0.0
 
 
 # maximum codewords per transmission.  Up to rank 4 the three splits are
 #   'nr'        one codeword on all layers (TS 38.211 Table 7.3.1.3-1);
 #   'lte'       {1} / {1,1} / {1,2} / {2,2} for ranks 1-4, the LTE mapping of
 #               TS 36.211 Table 6.3.3.2-1 (and the NR split of ranks 5-8);
+#   'lte_twisted' as 'lte' but {1,3} at rank 4: codeword 0 on layer 0 (the
+#               strongest), codeword 1 on layers 1-3;
 #   'per_layer' one codeword per layer.
-CW_MAPPINGS = {"alt1": 1, "alt2": 2, "alt3": 4, "nr": 1, "lte": 2, "per_layer": 4}
+CW_MAPPINGS = {"alt1": 1, "alt2": 2, "alt3": 4, "nr": 1, "lte": 2, "per_layer": 4,
+               "lte_twisted": 2, "alt2t": 2}
 
 
 @dataclass
@@ -198,6 +208,10 @@ class FullBufferResult:
     # drain can then be applied afterwards: keep files that arrived early enough)
     file_arrival_s: np.ndarray = field(default_factory=lambda: np.zeros(0))
     file_arrival_open_s: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    # FTP: UTs with data per cell, averaged over the slots after warm-up; FTP
+    # model 1: arrivals that found no idle UT in the pool (queued behind one)
+    mean_active_ues: float = 0.0
+    arrivals_blocked: int = 0
 
 
 def _links(d, k):
@@ -365,9 +379,10 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     sic = fb.receiver == "sic" and max_cw > 1
     if fb.harq_refill not in ("fresh", "always"):
         raise ValueError("harq_refill must be 'fresh' or 'always'")
-    if fb.traffic not in ("full_buffer", "ftp3"):
-        raise ValueError("traffic must be 'full_buffer' or 'ftp3'")
-    ftp = fb.traffic == "ftp3"
+    if fb.traffic not in ("full_buffer", "ftp3", "ftp1"):
+        raise ValueError("traffic must be 'full_buffer', 'ftp3' or 'ftp1'")
+    ftp = fb.traffic in ("ftp3", "ftp1")
+    ftp1 = fb.traffic == "ftp1"
     if ftp and fb.mu_mimo:
         raise ValueError("FTP traffic is SU-MIMO only")
     # FTP arrivals from a child stream: the same files for every scheme, and
@@ -472,7 +487,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                         n_beams=fb.n_beams, score_step=fb.pmi_score_step,
                         etype2_combo=fb.etype2_combo,
                         pmi_subband=fb.type1_subband_pmi,
-                        max_codewords=max_cw, sic=sic,
+                        max_codewords=max_cw, sic=sic, cw_mapping=fb.cw_mapping,
                         ri_sic_propagation=fb.ri_sic_propagation)
     pending = [[] for _ in range(n_ue)]                   # (avail, report, sinr_sb)
     current = [None] * n_ue
@@ -492,11 +507,22 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         # channel-update block each UT's channel belongs to)
         t_end = fb.n_slots * t_slot
         size_bits = int(round(fb.ftp_file_bytes * 8))
-        n_arr = trng.poisson(fb.ftp_rate_per_ue * t_end, n_ue)
-        arr_t = trng.uniform(0, t_end, int(n_arr.sum()))
-        arr_u = np.repeat(np.arange(n_ue), n_arr)
-        order = np.argsort(arr_t, kind="stable")
-        arr_t, arr_u = arr_t[order], arr_u[order]
+        if ftp1:
+            # UT arrivals over the network; each takes the first idle UT of
+            # eight drawn at random (the same for every scheme)
+            n_arr1 = int(trng.poisson(fb.ftp1_rate_per_cell * lay.n_cells * t_end))
+            arr_t = np.sort(trng.uniform(0, t_end, n_arr1))
+            arr_cand = trng.integers(0, n_ue, (n_arr1, 8))
+            arr_u = arr_cand[:, 0]
+        else:
+            n_arr = trng.poisson(fb.ftp_rate_per_ue * t_end, n_ue)
+            arr_t = trng.uniform(0, t_end, int(n_arr.sum()))
+            arr_u = np.repeat(np.arange(n_ue), n_arr)
+            order = np.argsort(arr_t, kind="stable")
+            arr_t, arr_u = arr_t[order], arr_u[order]
+        active = np.zeros(n_ue, bool)         # FTP model 1: UTs in the system
+        acsi = []                             # FTP model 1: aperiodic CSI this slot
+        n_blocked = n_with_data = 0
         t_lo, t_hi = fb.warmup_slots * t_slot, (fb.n_slots - fb.ftp_drain_slots) * t_slot
         files = [[] for _ in range(n_ue)]     # per UT, first in first out
         unsched = np.zeros(n_ue, np.int64)    # bits not yet in a TB
@@ -512,6 +538,23 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         if ftp:                               # files that arrived in the last slot
             while n_arrived < arr_t.size and arr_t[n_arrived] < slot * t_slot:
                 t_a, u = arr_t[n_arrived], arr_u[n_arrived]
+                if ftp1:
+                    idle = [int(c) for c in arr_cand[n_arrived] if not active[c]]
+                    if idle:
+                        u = idle[0]
+                    else:
+                        free_ues = np.flatnonzero(~active)
+                        if free_ues.size:
+                            u = int(free_ues[n_arrived % free_ues.size])
+                        else:                 # pool exhausted: queue behind a UT
+                            u = int(arr_cand[n_arrived, 0])
+                            n_blocked += 1
+                    if not active[u]:         # a new UT enters the system
+                        active[u] = True
+                        la.reset(u)
+                        current[u], pending[u] = None, []
+                        pf_avg[u] = 1.0
+                        acsi.append(u)
                 counted = bool(t_lo <= t_a < t_hi)
                 files[u].append({"t": t_a, "unsched": size_bits, "left": size_bits,
                                  "counted": counted})
@@ -521,6 +564,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         for u in range(n_ue):                             # CSI becoming usable
             while pending[u] and pending[u][0][0] <= slot:
                 current[u] = pending[u].pop(0)[1:]
+        if ftp and slot >= fb.warmup_slots:
+            n_with_data += sum(1 for f in files if f)
 
         # 1. scheduling
         w_cell = np.zeros((lay.n_cells, n_f, n_s, n_lay), np.complex64)
@@ -645,8 +690,18 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
 
         # 2. interference covariance and whitening, per UT and frequency
         if ftp:
-            need_ue = (np.arange(n_ue) if slot % fb.csi_period_slots == 0
-                       else np.unique(np.array([tb["ue"] for tb in txs], int)))
+            # CSI: every UT at the periodic occasions (FTP model 1: the UTs in
+            # the system) and FTP model 1's new UTs; channels for those and
+            # the UTs decoded in this slot
+            csi_now = slot % fb.csi_period_slots == 0
+            if ftp1:
+                rep_ues = np.unique(np.concatenate(
+                    [np.flatnonzero(active) if csi_now else np.zeros(0, int),
+                     np.array(acsi, int)]))
+            else:
+                rep_ues = np.arange(n_ue) if csi_now else np.zeros(0, int)
+            need_ue = np.unique(np.concatenate(
+                [rep_ues, np.array([tb["ue"] for tb in txs], int)]))
             blk = slot // fb.channel_update_slots * fb.channel_update_slots
             stale = need_ue[h_block[need_ue] != blk]
             if stale.size:
@@ -757,6 +812,12 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                                 upt.append(size_bits / ((slot + 1) * t_slot - f["t"]))
                                 upt_ue.append(u)
                                 upt_t.append(f["t"])
+                            if ftp1 and not files[u]:     # the UT leaves
+                                active[u] = False
+                                current[u], pending[u] = None, []
+                                harq = [t for t in harq if t["ue"] != u]
+            elif ftp1 and not active[u]:
+                pass                      # a departed UT's padding: not resent
             elif tb["ntx"] < fb.harq_max_tx:
                 tb["due"] = slot + fb.harq_rtt_slots
                 harq.append(tb)
@@ -767,18 +828,21 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         pf_avg *= 1 - 1 / fb.pf_window_slots
 
         # 4. CSI reports
-        if slot % fb.csi_period_slots == 0:
-            for u in range(n_ue):
-                rep = proc.select(hw[u], rbg_f, fb.rb_step, slot,
-                                  la.offset_table(u) if fb.ri_olla else None)
-                bits_log.append(rep.pmi_bits)
-                if max_cw == 1:
-                    sinr_sb = la.cqi_sinr_db(rep.cqi_sb, rep.rank, fb.rbg_size)
-                else:                                     # (n_cw, n_rbg)
-                    sinr_sb = np.array([la.cqi_sinr_db(q, len(g), fb.rbg_size)
-                                        for q, g in zip(rep.cqi_cw_sb, rep.groups)])
-                vec = _report_vectors(rep, n_rbg, first_f) if fb.mu_mimo else None
-                pending[u].append((slot + fb.csi_delay_slots, rep, sinr_sb, vec))
+        if ftp1:
+            report, acsi = rep_ues, []
+        else:
+            report = range(n_ue) if slot % fb.csi_period_slots == 0 else ()
+        for u in report:
+            rep = proc.select(hw[u], rbg_f, fb.rb_step, slot,
+                              la.offset_table(u) if fb.ri_olla else None)
+            bits_log.append(rep.pmi_bits)
+            if max_cw == 1:
+                sinr_sb = la.cqi_sinr_db(rep.cqi_sb, rep.rank, fb.rbg_size)
+            else:                                         # (n_cw, n_rbg)
+                sinr_sb = np.array([la.cqi_sinr_db(q, len(g), fb.rbg_size)
+                                    for q, g in zip(rep.cqi_cw_sb, rep.groups)])
+            vec = _report_vectors(rep, n_rbg, first_f) if fb.mu_mimo else None
+            pending[u].append((slot + fb.csi_delay_slots, rep, sinr_sb, vec))
 
     t_meas = (fb.n_slots - fb.warmup_slots) * t_slot
     bw = cfg.channel_bandwidth_hz or n_rb * 12 * scs
@@ -812,7 +876,10 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         file_upt_open_bps=np.array([x for x, _, _ in still]) if ftp else np.zeros(0),
         file_ue_open=np.array([u for _, u, _ in still], int) if ftp else np.zeros(0, int),
         file_arrival_s=np.array(upt_t) if ftp else np.zeros(0),
-        file_arrival_open_s=np.array([t for _, _, t in still]) if ftp else np.zeros(0))
+        file_arrival_open_s=np.array([t for _, _, t in still]) if ftp else np.zeros(0),
+        mean_active_ues=(n_with_data / max(fb.n_slots - fb.warmup_slots, 1) / lay.n_cells
+                         if ftp else 0.0),
+        arrivals_blocked=n_blocked if ftp else 0)
 
 
 def _fb_worker(args):
