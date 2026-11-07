@@ -61,7 +61,7 @@ def test_same_files_for_every_scheme_and_same_drop_as_full_buffer():
 def test_ftp_options_checked():
     cfg, fb = _small(ftp_rate_per_ue=1.0)
     with pytest.raises(ValueError):
-        run_full_buffer_drop(cfg, dataclasses.replace(fb, traffic="ftp1"),
+        run_full_buffer_drop(cfg, dataclasses.replace(fb, traffic="ftp2"),
                              np.random.default_rng(0))
     with pytest.raises(ValueError):
         run_full_buffer_drop(cfg, dataclasses.replace(fb, mu_mimo=True, harq_adaptive=False,
