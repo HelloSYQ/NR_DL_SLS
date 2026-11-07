@@ -99,5 +99,14 @@ def test_file_arrival_times_allow_a_drain_afterwards():
     log = [dict(base, variant="irc-olla", scheme="nr"), dict(base, variant="irc-fix", scheme="lte")]
     e = ev.summarize(log, "10mhz", drain=40)["configurations"][0]
     assert e["variants"]["irc-olla"]["nr"]["files"] == len(done) + len(still)
+    # a drain per run length
+    assert ev._files(rec, {fb.n_slots: 40}) == (done, still)
+    assert ev._files(rec, {fb.n_slots + 1: 40}) == (rec["upt"], rec["upt_open"])
+    assert ev._drain_arg("300") == 300
+    assert ev._drain_arg("1000:300,2000:1000") == {1000: 300, 2000: 1000}
+    # a drain as long as the run counts no file: NaN, not an error
+    e = ev.summarize(log, "10mhz", drain=fb.n_slots)["configurations"][0]
+    st = e["variants"]["irc-olla"]["nr"]
+    assert st["files"] == 0 and np.isnan(st["upt_mean"]) and np.isnan(st["upt_p5"])
     assert ev._files({k: v for k, v in rec.items() if k not in ("upt_t", "upt_open_t")},
                      drain=40) == (rec["upt"], rec["upt_open"])     # old records: as run

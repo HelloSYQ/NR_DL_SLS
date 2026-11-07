@@ -255,15 +255,30 @@ def _pct(x: float, y: float) -> float:
     return 100 * (x / y - 1) if y > 0 else float("nan")
 
 
-def _files(r: dict, drain: int | None = None) -> tuple:
-    """(completed, open) UPTs of a record; with ``drain`` (slots) only the
-    files that arrived before the last ``drain`` slots of the run (records
-    that log arrival times, ``upt_t``; others as run)."""
+def _files(r: dict, drain=None) -> tuple:
+    """(completed, open) UPTs of a record; with ``drain`` (slots, or a dict
+    run length -> slots) only the files that arrived before the last
+    ``drain`` slots of the run (records that log arrival times, ``upt_t``;
+    others as run)."""
+    if isinstance(drain, dict):
+        drain = drain.get(r["n_slots"])
     if drain is None or "upt_t" not in r:
         return r["upt"], r["upt_open"]
     t_max = (r["n_slots"] - drain) * scenario(r.get("setup", DEFAULT_SETUP)).carrier.slot_duration_s
     return ([u for u, t in zip(r["upt"], r["upt_t"]) if t < t_max],
             [u for u, t in zip(r["upt_open"], r["upt_open_t"]) if t < t_max])
+
+
+def _drain_arg(text: str):
+    """--summary-drain: N, or SLOTS:N,SLOTS:N."""
+    if ":" not in text:
+        return int(text)
+    return {int(k): int(v) for k, v in (p.split(":") for p in text.split(","))}
+
+
+def _stat(u: np.ndarray, f, *args) -> float:
+    """f(u, *args), or NaN when no file is counted (e.g. a drain as long as the run)."""
+    return float(f(u, *args)) if u.size else float("nan")
 
 
 def _kpis(recs: list, drain: int | None = None) -> dict:
@@ -273,9 +288,9 @@ def _kpis(recs: list, drain: int | None = None) -> dict:
             "ru": float(np.mean([r["ru"] for r in recs])),
             "files": int(u.size),
             "open_files": int(sum(len(b) for _, b in fl)),
-            "upt_mean": float(u.mean()), "upt_p5": float(np.percentile(u, 5)),
-            "upt_p50": float(np.percentile(u, 50)), "upt_p95": float(np.percentile(u, 95)),
-            "upt_mean_per_drop": [float(np.mean(a + b)) for a, b in fl],
+            "upt_mean": _stat(u, np.mean), "upt_p5": _stat(u, np.percentile, 5),
+            "upt_p50": _stat(u, np.percentile, 50), "upt_p95": _stat(u, np.percentile, 95),
+            "upt_mean_per_drop": [_stat(np.array(a + b, float), np.mean) for a, b in fl],
             "served_se": float(np.mean([r["served_se"] for r in recs])),
             "bler_first": float(np.mean([r["bler_first"] for r in recs])),
             "bler_first_cw": [float(np.mean([r["bler_first_cw"][k] for r in recs
@@ -373,9 +388,10 @@ def main() -> int:
                     help="comma-separated JSON-lines logs; new records go to the first")
     ap.add_argument("--out", default=None, help="default: the set-up's summary file")
     ap.add_argument("--summary-only", action="store_true")
-    ap.add_argument("--summary-drain", type=int, default=None,
+    ap.add_argument("--summary-drain", type=_drain_arg, default=None,
                     help="summary: count only files that arrived before the last N slots "
-                         "of each run (runs that log arrival times)")
+                         "of each run (runs that log arrival times); N, or per run "
+                         "length as SLOTS:N,SLOTS:N (e.g. 1000:300,2000:1000)")
     args = ap.parse_args()
 
     setup = args.setup
