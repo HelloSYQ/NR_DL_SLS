@@ -294,7 +294,10 @@ def _patch_sheet(xml: str, cells: dict, styles: _Styles) -> str:
                 left = [c for c in re.findall(r"<c\b[^>]*?/?>", content)
                         if _colnum(_split_ref(_attr(c, "r"))[0]) < cn]
                 s = _attr(left[-1], "s") if left else _attr(open_tag, "s")
-            if isinstance(v, str):
+            if v is None:            # an empty cell that keeps (or takes) the style
+                sa = f' s="{s}"' if s is not None else ""
+                new = f'<c r="{ref}"{sa}/>'
+            elif isinstance(v, str):
                 sa = f' s="{s}"' if s is not None else ""
                 text = escape(v)
                 new = (f'<c r="{ref}"{sa} t="inlineStr"><is><t xml:space="preserve">{text}'
