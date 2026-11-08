@@ -1,6 +1,11 @@
 # Codeword-to-layer mapping up to rank 4 with FTP traffic: 20 MHz, 30 kHz, 44 dBm
 
-This repeats the FTP study of [cw2lm-ftp.md](cw2lm-ftp.md) with a different carrier: 20 MHz and 30 kHz SCS, at M.2412's 44 dBm, with 10 drops instead of 5. The results fill a second copy of the 6GR CW2L template, `6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx` (sheet "SLS rank 1-4"). The 10 MHz copy, `6GR_DL_CW2L_template_v003.xlsx`, is unchanged.
+This repeats the FTP study of [cw2lm-ftp.md](cw2lm-ftp.md) with a different carrier: 20 MHz and 30 kHz SCS, at M.2412's 44 dBm, with 10 drops instead of 5. The results filled a second copy of the 6GR CW2L template, `6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx` (sheet "SLS rank 1-4"), until 2026-11-08. The 10 MHz copy, `6GR_DL_CW2L_template_v003.xlsx`, is unchanged.
+
+**Template, 2026-11-08.** The 20 MHz copy now holds the FTP model 1 evaluation with OLLA warm + fast start, not the FTP model 3 numbers on this page:
+- **Columns:** D = MMSE-IRC, E = codeword-level SIC, and a new F = MMSE-IRC with Alt2 = twisted LTE (rank 4 split as 1 + 3 layers).
+- **Blocks:** the "Reciprocity based precoding" rows hold sub-band SVD and "Other precoding scheme" wideband SVD; the codebook blocks are empty.
+- **Sources:** tables in [results/cw2lm_ftp1_warmfast_20mhz.md](../results/cw2lm_ftp1_warmfast_20mhz.md), filled by `examples/fill_cw2l_template_ftp1.py`.
 
 | | 10 MHz study ([cw2lm-ftp.md](cw2lm-ftp.md)) | This study (`--setup 20mhz`) |
 |---|---|---|
