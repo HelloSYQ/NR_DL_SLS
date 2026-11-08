@@ -28,7 +28,8 @@ retransmission (``harq_refill='always'``).  The screening variants of
             layer); NR is the published run
   *-warmfast  FTP model 1: a new UT's loops start from the mean offset of
             the loops with at least 20 ACK/NACKs (warm start), plus the fast
-            start on every loop; NR runs with both
+            start on every loop; NR runs with both (for sic-fix-warmfast, NR
+            is the irc-fix-warmfast run)
 
 Cases, both with CSI every 20 ms that is 4 ms old when used:
 
@@ -110,7 +111,8 @@ VARIANTS = {"irc-olla": dict(_LEGACY), "sic-olla": dict(_SIC, **_LEGACY),
             "sic-fix": dict(_SIC), "sic-fix-a": dict(_SIC, **_A),
             "sic-fix-b": dict(_SIC, **_B), "sic-fix-ab": dict(_SIC, **_A, **_B),
             "irc-fix-fast": dict(_FAST), "irc-fix-fastw": dict(_FASTW),
-            "irc-fix-warmfast": dict(_FAST, olla_warm_samples=20)}
+            "irc-fix-warmfast": dict(_FAST, olla_warm_samples=20),
+            "sic-fix-warmfast": dict(_SIC, **_FAST, olla_warm_samples=20)}
 PUBLISHED_VARIANTS = ("irc-olla", "sic-olla")
 SCREEN_VARIANTS = ("irc-fix", "irc-fix-b", "sic-fix", "sic-fix-a", "sic-fix-b", "sic-fix-ab")
 
@@ -124,7 +126,9 @@ def nr_reference(variant: str) -> str:
         return "irc-fix-b"
     if v.get("olla_warm_samples", 0) or (v.get("olla_fast_samples", 0)
                                          and v.get("olla_fast_min_cw", 0) == 0):
-        return variant
+        # with one codeword SIC is MMSE-IRC: NR is the MMSE-IRC run with the
+        # same OLLA (sic-fix-warmfast -> irc-fix-warmfast)
+        return "irc-" + variant[4:] if variant.startswith("sic-") else variant
     return "irc-olla"
 
 
