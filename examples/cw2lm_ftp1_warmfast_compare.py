@@ -12,6 +12,10 @@ count the files that arrived before the last 300 (1000-slot runs) or 1000
         --log <results/ftp1_warmfast/*.jsonl, comma-separated> \
         --out results/cw2lm_ftp1_warmfast_20mhz.json --summary-drain 1000:300,2000:1000
     python examples/cw2lm_ftp1_warmfast_compare.py      # -> results/cw2lm_ftp1_warmfast_20mhz.md
+
+When the warm + fast summary also has codeword-level SIC (sic-fix-warmfast),
+a last section lists it on its own: there is no plain-OLLA SIC run under FTP
+model 1, and its gains are against NR with MMSE-IRC and the same OLLA.
 """
 import json
 import os
@@ -74,6 +78,28 @@ for case in ("svd_sb_20ms", "svd_20ms"):
                      f"{100 * a['retx_rbg_fraction']:.1f} → {100 * b['retx_rbg_fraction']:.1f} % | "
                      f"{gain} | {own} |")
         L.append("")
+# codeword-level SIC: only the warm + fast set has it (gains against NR with
+# MMSE-IRC and the same OLLA, irc-fix-warmfast: with one codeword SIC is MMSE-IRC)
+sic = [(case, load) for case in ("svd_sb_20ms", "svd_20ms") for load in ("20", "50", "70")
+       if W.get((case, load), {}).get("sic-fix-warmfast")]
+if sic:
+    L += ["## Codeword-level SIC with warm + fast OLLA", "",
+          "No plain-OLLA SIC run under FTP model 1 to compare with; the gains are against NR "
+          "with MMSE-IRC and the same warm + fast OLLA.", "",
+          "| Case | Load | Scheme | Drops | BLER per CW [%] | Retx share (RBGs) | "
+          "Gain vs NR, mean / p5 / p95 [%] | Mean rank |", "|---|---|---|---|---|---|---|---|"]
+    for case, load in sic:
+        for s in ("lte", "per_layer"):
+            st = W[(case, load)]["sic-fix-warmfast"].get(s)
+            if not st:
+                continue
+            g = st.get("gain_vs_nr_pct", {})
+            L.append(f"| {case} | {load} % | {NAME[s]} | {len(st['drops'])} | "
+                     + " / ".join(f"{100 * x:.1f}" for x in st["bler_first_cw"])
+                     + f" | {100 * st['retx_rbg_fraction']:.1f} % | "
+                     + (" / ".join(f(g[k]) for k in KPI) if g else "—")
+                     + f" | {st['mean_rank']:.2f} |")
+    L.append("")
 md = "\n".join(L)
 print(md)
 with open(md_out, "w") as fh:
