@@ -74,6 +74,13 @@ def main():
     ap.add_argument("--olla-sic-conditional", action="store_true",
                     help="SIC: a codeword's OLLA skips transmissions whose earlier "
                          "codeword failed")
+    ap.add_argument("--olla-fast-gain", type=float, default=1.0,
+                    help="OLLA fast start: step multiplier for a loop's first ACK/NACKs")
+    ap.add_argument("--olla-fast-samples", type=int, default=0,
+                    help="OLLA fast start: how many ACK/NACKs per loop (0: off)")
+    ap.add_argument("--olla-fast-min-cw", type=int, default=0,
+                    help="OLLA fast start: first codeword index it applies to "
+                         "(1: all but the strongest-layer codeword)")
     ap.add_argument("--ideal-la", action="store_true",
                     help="reference: MCS from the SINR each new TB actually gets")
     args = ap.parse_args()
@@ -97,7 +104,10 @@ def main():
                               receiver=args.receiver, ideal_la=args.ideal_la,
                               olla_sic_conditional=args.olla_sic_conditional,
                               harq_refill=args.harq_refill, ri_olla=args.ri_olla,
-                              ri_sic_propagation=args.ri_sic_propagation)
+                              ri_sic_propagation=args.ri_sic_propagation,
+                              olla_fast_gain=args.olla_fast_gain,
+                              olla_fast_samples=args.olla_fast_samples,
+                              olla_fast_min_cw=args.olla_fast_min_cw)
         t0 = time.time()
         r = run_full_buffer(cfg, fb, args.drops, seed=1, n_jobs=args.jobs)
         ue_se[cb] = r["ue_se"]
@@ -127,7 +137,9 @@ def main():
             "receiver": args.receiver, "ideal_la": args.ideal_la,
             "olla_sic_conditional": args.olla_sic_conditional,
             "harq_refill": args.harq_refill, "ri_olla": args.ri_olla,
-            "ri_sic_propagation": args.ri_sic_propagation}
+            "ri_sic_propagation": args.ri_sic_propagation,
+            "olla_fast_gain": args.olla_fast_gain, "olla_fast_samples": args.olla_fast_samples,
+            "olla_fast_min_cw": args.olla_fast_min_cw}
     with open(os.path.join(OUT, f"{args.tag}_full_buffer.json"), "w") as f:
         json.dump({"config": meta, "results": summary,
                    "ue_se": {k: [round(float(x), 5) for x in v] for k, v in ue_se.items()}},

@@ -10,6 +10,15 @@ first-transmission NACK and -step p/(1-p) after an ACK.
 With several codewords (``n_cw`` > 1) each codeword index has its own OLLA
 loop per UT, and with ``per_rank`` also per transmission rank (OLLA per CW
 per rank).  With one codeword and no ``per_rank`` there is one loop per UT.
+
+Fast start (``fast_gain``, ``fast_samples``, ``fast_min_cw``): the first
+``fast_samples`` ACK/NACKs of a loop (since its UT arrived, see ``reset``)
+move it ``fast_gain`` times the normal steps, keeping their ratio and so the
+BLER target, for the codewords from index ``fast_min_cw`` on.  A loop that
+starts at 0 dB and must climb X dB pays X / (step + step p/(1-p)) NACKs
+above the target; the fast start divides that by ``fast_gain``, which
+matters most for a loop with few samples, e.g. the codeword of the weakest
+layer, used only at full rank.
 """
 
 from __future__ import annotations
@@ -41,7 +50,8 @@ class LinkAdaptation:
     def __init__(self, n_ue: int, mcs_table: int = 2, target_bler: float = 0.1,
                  n_re_per_rb: int = 132, step_db: float = 0.5,
                  limit_db: float = 10.0, n_cw: int = 1, per_rank: bool = False,
-                 max_rank: int = 4):
+                 max_rank: int = 4, fast_gain: float = 1.0, fast_samples: int = 0,
+                 fast_min_cw: int = 0):
         self.mcs_table = mcs_table
         self.cqi_table = mcs_tables.MCS_TO_CQI_TABLE[mcs_table]
         self.target = target_bler
@@ -53,6 +63,10 @@ class LinkAdaptation:
         self.step_nack = step_db
         self.step_ack = step_db * target_bler / (1 - target_bler)
         self.limit = limit_db
+        self.fast_gain = float(fast_gain)
+        self.fast_samples = int(fast_samples)
+        self.fast_min_cw = int(fast_min_cw)
+        self.n_updates = np.zeros(self.offset.shape, int)     # per loop, since reset
 
     def _key(self, ue: int, cw: int, tx_rank: int | None):
         if self.offset.ndim == 1:
@@ -81,8 +95,10 @@ class LinkAdaptation:
         return int(ok[-1]) if ok.size else 0
 
     def reset(self, ue: int) -> None:
-        """A new UT (FTP model 1): all its loops start from zero."""
+        """A new UT (FTP model 1): all its loops start from zero, and with a
+        fast start, fast again."""
         self.offset[ue] = 0.0
+        self.n_updates[ue] = 0
 
     def offset_table(self, ue: int, max_rank: int = 4) -> np.ndarray:
         """The UT's OLLA offsets [dB] as (max_rank + 1, n_cw), indexed by
@@ -97,5 +113,9 @@ class LinkAdaptation:
 
     def update(self, ue: int, ack: bool, cw: int = 0, tx_rank: int | None = None):
         k = self._key(ue, cw, tx_rank)
-        self.offset[k] += -self.step_ack if ack else self.step_nack
+        step = -self.step_ack if ack else self.step_nack
+        if cw >= self.fast_min_cw and self.n_updates[k] < self.fast_samples:
+            step *= self.fast_gain
+        self.n_updates[k] += 1
+        self.offset[k] += step
         self.offset[k] = float(np.clip(self.offset[k], -self.limit, self.limit))

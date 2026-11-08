@@ -22,6 +22,10 @@ retransmission (``harq_refill='always'``).  The screening variants of
   *-a       SIC: the RI metric weights codeword k by 0.9^k (error propagation)
   *-b       per-rank OLLA and an RI metric on the OLLA-corrected CQIs; the NR
             reference of a -b variant is NR with B (irc-fix-b)
+  *-fast    OLLA fast start, x4 steps for a loop's first 20 ACK/NACKs, on
+            every loop; NR runs with it too
+  *-fastw   the same on every codeword but codeword 0 (the strongest
+            layer); NR is the published run
 
 Cases, both with CSI every 20 ms that is 4 ms old when used:
 
@@ -93,18 +97,29 @@ _LEGACY = {"harq_refill": "always"}
 _SIC = {"receiver": "sic"}
 _A = {"ri_sic_propagation": True}
 _B = {"olla_per_rank": True, "ri_olla": True}
+# OLLA fast start: x4 steps for a loop's first 20 ACK/NACKs, on every loop
+# (NR's included) or on all codewords but codeword 0 (the strongest layer)
+_FAST = {"olla_fast_gain": 4.0, "olla_fast_samples": 20}
+_FASTW = dict(_FAST, olla_fast_min_cw=1)
 VARIANTS = {"irc-olla": dict(_LEGACY), "sic-olla": dict(_SIC, **_LEGACY),
             "irc-fix": {}, "irc-fix-b": dict(_B),
             "sic-fix": dict(_SIC), "sic-fix-a": dict(_SIC, **_A),
-            "sic-fix-b": dict(_SIC, **_B), "sic-fix-ab": dict(_SIC, **_A, **_B)}
+            "sic-fix-b": dict(_SIC, **_B), "sic-fix-ab": dict(_SIC, **_A, **_B),
+            "irc-fix-fast": dict(_FAST), "irc-fix-fastw": dict(_FASTW)}
 PUBLISHED_VARIANTS = ("irc-olla", "sic-olla")
 SCREEN_VARIANTS = ("irc-fix", "irc-fix-b", "sic-fix", "sic-fix-a", "sic-fix-b", "sic-fix-ab")
 
 
 def nr_reference(variant: str) -> str:
     """The NR run a variant is compared with: NR with the same rank
-    adaptation (B), else the published NR run."""
-    return "irc-fix-b" if VARIANTS[variant].get("ri_olla") else "irc-olla"
+    adaptation (B), NR with the same OLLA fast start when it applies to NR's
+    codeword too, else the published NR run."""
+    v = VARIANTS[variant]
+    if v.get("ri_olla"):
+        return "irc-fix-b"
+    if v.get("olla_fast_samples", 0) and v.get("olla_fast_min_cw", 0) == 0:
+        return variant
+    return "irc-olla"
 
 
 CASES = {"etype2_20ms": "etype2", "svd_sb_20ms": "svd_sb", "svd_20ms": "svd"}

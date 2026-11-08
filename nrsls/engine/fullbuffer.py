@@ -86,6 +86,14 @@ class FullBufferConfig:
     mcs_table: int = 2
     target_bler: float = 0.1
     olla_step_db: float = 0.5
+    # OLLA fast start (mac/link_adaptation.py): the first olla_fast_samples
+    # ACK/NACKs of a loop (since the UT arrived, or the drop began) move it
+    # olla_fast_gain times the normal steps, same ratio and so same target,
+    # for codewords >= olla_fast_min_cw (0: every loop, NR's included; 1: all
+    # but codeword 0, which carries the strongest layer)
+    olla_fast_gain: float = 1.0
+    olla_fast_samples: int = 0
+    olla_fast_min_cw: int = 0
     harq_max_tx: int = 4
     harq_rtt_slots: int = 8
     pf_window_slots: float = 100.0
@@ -379,6 +387,9 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     sic = fb.receiver == "sic" and max_cw > 1
     if fb.harq_refill not in ("fresh", "always"):
         raise ValueError("harq_refill must be 'fresh' or 'always'")
+    if fb.olla_fast_gain <= 0 or fb.olla_fast_samples < 0 or fb.olla_fast_min_cw < 0:
+        raise ValueError("olla_fast_gain must be > 0, olla_fast_samples and "
+                         "olla_fast_min_cw >= 0")
     if fb.traffic not in ("full_buffer", "ftp3", "ftp1"):
         raise ValueError("traffic must be 'full_buffer', 'ftp3' or 'ftp1'")
     ftp = fb.traffic in ("ftp3", "ftp1")
@@ -468,9 +479,12 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     pdsch = PDSCHConfig(num_rb=n_rb, start_symbol=fb.pdcch_symbols,
                         num_symbols=14 - fb.pdcch_symbols, n_oh=fb.overhead_re_per_prb)
     n_re = tbs_mod.re_per_rb(pdsch.num_symbols, rg.dmrs_re_per_rb(pdsch), pdsch.n_oh)
+    fast = dict(fast_gain=fb.olla_fast_gain, fast_samples=fb.olla_fast_samples,
+                fast_min_cw=fb.olla_fast_min_cw)
     la = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db,
-                        n_cw=max_cw, per_rank=fb.olla_per_rank, max_rank=4)
-    la_mu = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db)
+                        n_cw=max_cw, per_rank=fb.olla_per_rank, max_rank=4, **fast)
+    la_mu = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db,
+                           **fast)
     # mu_dmrs_overhead: type-1 double-symbol DM-RS (ports 0-7), front-loaded
     # + 1 additional pair, 2 CDM groups without data -> 4 x 12 REs per RB
     # pair, 2 CDM groups without data -> 4 x 12 DM-RS REs per RB
