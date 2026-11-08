@@ -81,6 +81,9 @@ def main():
     ap.add_argument("--olla-fast-min-cw", type=int, default=0,
                     help="OLLA fast start: first codeword index it applies to "
                          "(1: all but the strongest-layer codeword)")
+    ap.add_argument("--olla-warm-samples", type=int, default=0,
+                    help="OLLA warm start (FTP model 1): a new UT's loops start from "
+                         "the mean of the loops with at least this many ACK/NACKs (0: off)")
     ap.add_argument("--ideal-la", action="store_true",
                     help="reference: MCS from the SINR each new TB actually gets")
     args = ap.parse_args()
@@ -107,7 +110,8 @@ def main():
                               ri_sic_propagation=args.ri_sic_propagation,
                               olla_fast_gain=args.olla_fast_gain,
                               olla_fast_samples=args.olla_fast_samples,
-                              olla_fast_min_cw=args.olla_fast_min_cw)
+                              olla_fast_min_cw=args.olla_fast_min_cw,
+                              olla_warm_samples=args.olla_warm_samples)
         t0 = time.time()
         r = run_full_buffer(cfg, fb, args.drops, seed=1, n_jobs=args.jobs)
         ue_se[cb] = r["ue_se"]
@@ -139,7 +143,8 @@ def main():
             "harq_refill": args.harq_refill, "ri_olla": args.ri_olla,
             "ri_sic_propagation": args.ri_sic_propagation,
             "olla_fast_gain": args.olla_fast_gain, "olla_fast_samples": args.olla_fast_samples,
-            "olla_fast_min_cw": args.olla_fast_min_cw}
+            "olla_fast_min_cw": args.olla_fast_min_cw,
+            "olla_warm_samples": args.olla_warm_samples}
     with open(os.path.join(OUT, f"{args.tag}_full_buffer.json"), "w") as f:
         json.dump({"config": meta, "results": summary,
                    "ue_se": {k: [round(float(x), 5) for x in v] for k, v in ue_se.items()}},

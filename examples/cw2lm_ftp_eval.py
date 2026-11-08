@@ -26,6 +26,9 @@ retransmission (``harq_refill='always'``).  The screening variants of
             every loop; NR runs with it too
   *-fastw   the same on every codeword but codeword 0 (the strongest
             layer); NR is the published run
+  *-warmfast  FTP model 1: a new UT's loops start from the mean offset of
+            the loops with at least 20 ACK/NACKs (warm start), plus the fast
+            start on every loop; NR runs with both
 
 Cases, both with CSI every 20 ms that is 4 ms old when used:
 
@@ -98,14 +101,16 @@ _SIC = {"receiver": "sic"}
 _A = {"ri_sic_propagation": True}
 _B = {"olla_per_rank": True, "ri_olla": True}
 # OLLA fast start: x4 steps for a loop's first 20 ACK/NACKs, on every loop
-# (NR's included) or on all codewords but codeword 0 (the strongest layer)
+# (NR's included) or on all codewords but codeword 0 (the strongest layer);
+# warm start: a new UT's loops start from the converged loops' mean
 _FAST = {"olla_fast_gain": 4.0, "olla_fast_samples": 20}
 _FASTW = dict(_FAST, olla_fast_min_cw=1)
 VARIANTS = {"irc-olla": dict(_LEGACY), "sic-olla": dict(_SIC, **_LEGACY),
             "irc-fix": {}, "irc-fix-b": dict(_B),
             "sic-fix": dict(_SIC), "sic-fix-a": dict(_SIC, **_A),
             "sic-fix-b": dict(_SIC, **_B), "sic-fix-ab": dict(_SIC, **_A, **_B),
-            "irc-fix-fast": dict(_FAST), "irc-fix-fastw": dict(_FASTW)}
+            "irc-fix-fast": dict(_FAST), "irc-fix-fastw": dict(_FASTW),
+            "irc-fix-warmfast": dict(_FAST, olla_warm_samples=20)}
 PUBLISHED_VARIANTS = ("irc-olla", "sic-olla")
 SCREEN_VARIANTS = ("irc-fix", "irc-fix-b", "sic-fix", "sic-fix-a", "sic-fix-b", "sic-fix-ab")
 
@@ -117,7 +122,8 @@ def nr_reference(variant: str) -> str:
     v = VARIANTS[variant]
     if v.get("ri_olla"):
         return "irc-fix-b"
-    if v.get("olla_fast_samples", 0) and v.get("olla_fast_min_cw", 0) == 0:
+    if v.get("olla_warm_samples", 0) or (v.get("olla_fast_samples", 0)
+                                         and v.get("olla_fast_min_cw", 0) == 0):
         return variant
     return "irc-olla"
 

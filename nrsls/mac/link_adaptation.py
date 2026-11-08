@@ -19,6 +19,12 @@ starts at 0 dB and must climb X dB pays X / (step + step p/(1-p)) NACKs
 above the target; the fast start divides that by ``fast_gain``, which
 matters most for a loop with few samples, e.g. the codeword of the weakest
 layer, used only at full rank.
+
+Warm start (``warm_samples`` > 0): a new UT's loops (``reset``) start from the
+mean offset of the other UTs' loops of the same codeword (and rank, with
+``per_rank``) that have had at least ``warm_samples`` ACK/NACKs, instead of
+0 dB: an initial offset learned from the converged loops, so that a new UT
+does not pay the climb.  Loops without such peers start from 0 dB.
 """
 
 from __future__ import annotations
@@ -51,7 +57,7 @@ class LinkAdaptation:
                  n_re_per_rb: int = 132, step_db: float = 0.5,
                  limit_db: float = 10.0, n_cw: int = 1, per_rank: bool = False,
                  max_rank: int = 4, fast_gain: float = 1.0, fast_samples: int = 0,
-                 fast_min_cw: int = 0):
+                 fast_min_cw: int = 0, warm_samples: int = 0):
         self.mcs_table = mcs_table
         self.cqi_table = mcs_tables.MCS_TO_CQI_TABLE[mcs_table]
         self.target = target_bler
@@ -66,6 +72,7 @@ class LinkAdaptation:
         self.fast_gain = float(fast_gain)
         self.fast_samples = int(fast_samples)
         self.fast_min_cw = int(fast_min_cw)
+        self.warm_samples = int(warm_samples)
         self.n_updates = np.zeros(self.offset.shape, int)     # per loop, since reset
 
     def _key(self, ue: int, cw: int, tx_rank: int | None):
@@ -95,10 +102,17 @@ class LinkAdaptation:
         return int(ok[-1]) if ok.size else 0
 
     def reset(self, ue: int) -> None:
-        """A new UT (FTP model 1): all its loops start from zero, and with a
-        fast start, fast again."""
+        """A new UT (FTP model 1): its loops start from zero, or with a warm
+        start from the mean of the other UTs' loops that have had at least
+        ``warm_samples`` ACK/NACKs (per codeword and rank); with a fast start
+        they are fast again."""
         self.offset[ue] = 0.0
         self.n_updates[ue] = 0
+        if self.warm_samples > 0:
+            peers = self.n_updates >= self.warm_samples       # ue's own count is 0
+            n = peers.sum(axis=0)
+            total = np.where(peers, self.offset, 0.0).sum(axis=0)
+            self.offset[ue] = np.where(n > 0, total / np.maximum(n, 1), 0.0)
 
     def offset_table(self, ue: int, max_rank: int = 4) -> np.ndarray:
         """The UT's OLLA offsets [dB] as (max_rank + 1, n_cw), indexed by

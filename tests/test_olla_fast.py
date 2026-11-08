@@ -1,6 +1,8 @@
 """OLLA fast start (LinkAdaptation fast_gain / fast_samples / fast_min_cw,
 FullBufferConfig olla_fast_*): the first ACK/NACKs of a loop move it faster,
-with the same up/down ratio and so the same BLER target."""
+with the same up/down ratio and so the same BLER target; and warm start
+(warm_samples, olla_warm_samples): a new UT's loops start from the mean of
+the converged loops."""
 
 import dataclasses
 
@@ -81,8 +83,61 @@ def test_weak_codeword_fast_start_leaves_nr_alone():
     assert not _same(a, run_full_buffer_drop(cfg, every, np.random.default_rng(2)))
 
 
+def test_warm_start_takes_the_mean_of_the_converged_loops():
+    la = LinkAdaptation(4, n_cw=2, warm_samples=3)
+    for _ in range(3):
+        la.update(0, False, cw=0)                   # 3 samples: +1.5 dB
+    la.update(0, False, cw=1)                       # 1 sample: not converged
+    for _ in range(4):
+        la.update(1, True, cw=0)                    # 4 samples: -4 ACK steps
+    la.update(2, False, cw=0)                       # 1 sample: not converged
+    la.reset(3)
+    assert la.offset[3, 0, 0] == pytest.approx((1.5 - 4 * ACK) / 2)
+    assert la.offset[3, 0, 1] == 0.0                # no converged peer: 0 dB
+    assert np.all(la.n_updates[3] == 0)
+    # a returning UT does not count its own old loop
+    la.reset(0)
+    assert la.offset[0, 0, 0] == pytest.approx(-4 * ACK)
+    # one codeword (NR)
+    nr = LinkAdaptation(3, warm_samples=2)
+    nr.update(0, False)
+    nr.update(0, False)
+    nr.update(1, False)
+    nr.reset(2)
+    assert nr.offset[2] == pytest.approx(1.0)
+    # OLLA per rank: per rank and codeword
+    pr = LinkAdaptation(3, n_cw=2, per_rank=True, warm_samples=1)
+    pr.update(0, False, cw=1, tx_rank=3)
+    pr.update(1, True, cw=1, tx_rank=4)
+    pr.reset(2)
+    assert pr.offset[2, 3, 1] == pytest.approx(0.5)
+    assert pr.offset[2, 4, 1] == pytest.approx(-ACK)
+    assert np.count_nonzero(pr.offset[2]) == 2
+    # off: zeros, as before
+    off = LinkAdaptation(2)
+    off.update(0, False)
+    off.reset(1)
+    assert off.offset[1] == 0.0
+
+
+def test_warm_start_acts_on_arrivals_only():
+    # FTP model 1: every arrival starts warm, so the run changes
+    cfg, fb = _ftp1(rate_per_cell=60.0, cw_mapping="per_layer")
+    a = run_full_buffer_drop(cfg, fb, np.random.default_rng(3))
+    warm = dataclasses.replace(fb, olla_warm_samples=5)
+    b = run_full_buffer_drop(cfg, warm, np.random.default_rng(3))
+    assert not _same(a, b) and b.files_counted == a.files_counted > 0
+    # FTP model 3 has no arrivals of UTs: the loops are never reset
+    from test_ftp import _small as _ftp3
+    cfg3, fb3 = _ftp3(ftp_rate_per_ue=10.0, cw_mapping="per_layer")
+    a3 = run_full_buffer_drop(cfg3, fb3, np.random.default_rng(3))
+    b3 = run_full_buffer_drop(cfg3, dataclasses.replace(fb3, olla_warm_samples=5),
+                              np.random.default_rng(3))
+    assert _same(a3, b3)
+
+
 @pytest.mark.parametrize("kw", [{"olla_fast_gain": 0.0}, {"olla_fast_samples": -1},
-                                {"olla_fast_min_cw": -1}])
+                                {"olla_fast_min_cw": -1}, {"olla_warm_samples": -1}])
 def test_fast_start_options_checked(kw):
     cfg, fb = _ftp1(rate_per_cell=10.0)
     with pytest.raises(ValueError):
