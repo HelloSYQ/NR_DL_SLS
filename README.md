@@ -161,6 +161,10 @@ python -m pytest
 
 Every field of `nrsls.ScenarioConfig` can be overridden:
 `get_preset("system", ue_per_cell=20, o2i_model="legacy")`.
+For example, `ue_self_blocking=True` adds the users' hand grip: the UT
+self-blocking of TR 38.901 §7.6.4.1 (blockage model A). Each UT is held in
+portrait or landscape mode, half and half, with a random orientation, and a
+cluster that arrives in the grip's region loses 30 dB.
 
 `--jobs N` spreads drops over N spawned processes with single-threaded BLAS.
 Results do not depend on N, because drop *i* always uses the random stream
@@ -173,7 +177,8 @@ nrsls/
   config/scenario.py     ScenarioConfig, BS/UT antenna configs, presets
   topology/              hexagonal grid + wrap-around, InH hall, UT drop
   antenna/array.py       panel + TXRU virtualisation (element pattern from nrdlsim)
-  propagation/           pathloss, LOS, O2I / in-car loss, LSPs, clusters/rays, H(f,t)
+  propagation/           pathloss, LOS, O2I / in-car loss, LSPs, clusters/rays, H(f,t),
+                         UT self-blocking (hand grip)
   link/                  noise, geometry, multipath port-0 RSRP; association
   phy/                   IRC SINR, Type-I / eType-II codebooks, CSI (RI/PMI/CQI)
   mac/                   CQI -> MCS, OLLA; MU-MIMO pairing and zero forcing
