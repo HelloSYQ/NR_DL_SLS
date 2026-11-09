@@ -8,11 +8,18 @@ utilisation (results/cw2lm_ftp1[_grip]_rates_20mhz.json), so the rate change
 is the capacity cost of the grip at that load.  Gains are against NR of the
 same set (MMSE-IRC; with one codeword SIC is MMSE-IRC).  The drop statistics
 compare the 10 drops with and without the grip (same UTs, pathloss and
-clusters; seed [1, drop]).
+clusters; seed [1, drop]).  With the control summaries (NR only, at the
+no-grip rates: setup 20mhz-ftp1-orient turns the UT array by the grip's
+orientation and blocks nothing, 20mhz-ftp1-grip-norecal is the full grip) it
+also splits NR's change into the array orientation and the blocking.
 
     python examples/cw2lm_ftp_eval.py --setup 20mhz-ftp1-grip --summary-only \\
         --log <results/ftp1_grip/*.jsonl, comma-separated> \\
         --summary-drain 1000:300,2000:1000
+    python examples/cw2lm_ftp_eval.py --setup 20mhz-ftp1-orient --summary-only \
+        --log results/ftp1_grip_ctrl/ctrl.jsonl --summary-drain 1000:300,2000:1000
+    python examples/cw2lm_ftp_eval.py --setup 20mhz-ftp1-grip-norecal --summary-only \
+        --log results/ftp1_grip_ctrl/ctrl.jsonl --summary-drain 1000:300,2000:1000
     python examples/cw2lm_ftp1_grip_compare.py        # -> results/cw2lm_ftp1_grip_20mhz.md
 """
 import dataclasses
@@ -36,6 +43,8 @@ base_path = args[0] or os.path.join(OUT, "cw2lm_ftp1_warmfast_20mhz.json")
 grip_path = args[1] or os.path.join(OUT, "cw2lm_ftp1_grip_20mhz.json")
 md_out = args[2] or os.path.join(OUT, "cw2lm_ftp1_grip_20mhz.md")
 DROP_STATS = os.path.join(OUT, "cw2lm_ftp1_grip_drops.json")
+ORIENT = os.path.join(OUT, "cw2lm_ftp1_orient_20mhz.json")
+NORECAL = os.path.join(OUT, "cw2lm_ftp1_grip_norecal_20mhz.json")
 CASES = ("svd_sb_20ms", "svd_20ms")
 LOADS = ("20", "50", "70")
 ROWS = (("irc-fix-warmfast", "nr", "NR"), ("irc-fix-warmfast", "lte", "LTE"),
@@ -127,7 +136,7 @@ def main():
          "30 dB on each cluster whose centre arrives in the grip's region). Each set runs at "
          "its own arrival rates for 20 / 50 / 70 % NR resource utilisation; gains are against "
          "NR of the same set; 'own UPT' compares a scheme with itself across the sets, at the "
-         "same RU target (the grip set carries less traffic there).", "",
+         "same RU target and so at each set's own arrival rate.", "",
          "## What the grip does to the drops", "",
          f"{ds['drops']} drops, {ds['uts']} UTs ({100 * ds['landscape_share']:.0f} % landscape).", "",
          "| Quantity | Value |", "|---|---|",
@@ -161,6 +170,28 @@ def main():
                      f"{100 * a['ru']:.0f} → {100 * b['ru']:.0f} % | "
                      f"{a['mean_rank']:.2f} → {b['mean_rank']:.2f} | {mb(a)} → {mb(b)} | "
                      + " / ".join(f(100 * (b[k] / a[k] - 1)) for k in KPI) + " |")
+    if os.path.exists(ORIENT) and os.path.exists(NORECAL):
+        O, N = cells(ORIENT), cells(NORECAL)
+        L += ["", "## Array orientation and blocking (NR at the no-grip rates)", "",
+              "The grip turns each UT by a random azimuth, which also turns its array, and "
+              "blocks the clusters in the grip's region. At the no-grip arrival rates, "
+              "'orientation' turns the array and blocks nothing (0 dB), and 'grip' is the "
+              "full model; 'blocking' compares the two.", "",
+              "| Precoder | Load | RU: no grip / orientation / grip | Mean rank: no grip / "
+              "orientation / grip | NR UPT mean / p5 / p95 [%]: orientation vs no grip | "
+              "blocking (grip vs orientation) | grip vs no grip |",
+              "|---|---|---|---|---|---|---|"]
+        for case in CASES:
+            for load in LOADS:
+                a = B.get((case, load), {}).get("irc-fix-warmfast", {}).get("nr")
+                o = O.get((case, load), {}).get("irc-fix-warmfast", {}).get("nr")
+                g = N.get((case, load), {}).get("irc-fix-warmfast", {}).get("nr")
+                if not (a and o and g):
+                    continue
+                ch = lambda x, y: " / ".join(f(100 * (x[k] / y[k] - 1)) for k in KPI)
+                L.append(f"| {case} | {load} % | {100 * a['ru']:.0f} / {100 * o['ru']:.0f} / "
+                         f"{100 * g['ru']:.0f} % | {a['mean_rank']:.2f} / {o['mean_rank']:.2f} / "
+                         f"{g['mean_rank']:.2f} | {ch(o, a)} | {ch(g, o)} | {ch(g, a)} |")
     L += ["", "## Gains against NR", ""]
     for case in CASES:
         for load in LOADS:
