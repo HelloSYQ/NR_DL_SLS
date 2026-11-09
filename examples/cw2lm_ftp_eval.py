@@ -179,6 +179,15 @@ SETUPS = {
                             carrier="4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB)",
                             power="44 dBm per 20 MHz"),
 }
+# controls for the grip, NR at the no-grip rates: the UT orientation alone (the
+# array turns, nothing is blocked: 0 dB) and the full grip
+SETUPS["20mhz-ftp1-orient"] = dict(
+    SETUPS["20mhz-ftp1-grip"], rates=SETUPS["20mhz-ftp1"]["rates"],
+    preset=dict(SETUPS["20mhz-ftp1-grip"]["preset"], self_blocking_db=0.0),
+    out=os.path.join(OUT, "cw2lm_ftp1_orient_20mhz.json"))
+SETUPS["20mhz-ftp1-grip-norecal"] = dict(
+    SETUPS["20mhz-ftp1-grip"], rates=SETUPS["20mhz-ftp1"]["rates"],
+    out=os.path.join(OUT, "cw2lm_ftp1_grip_norecal_20mhz.json"))
 CAL_RATES = SETUPS[DEFAULT_SETUP]["cal_rates"]
 
 
