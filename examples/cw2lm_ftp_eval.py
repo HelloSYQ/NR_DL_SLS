@@ -331,6 +331,8 @@ def _kpis(recs: list, drain: int | None = None) -> dict:
             "mean_rank": float(np.mean([r["mean_rank"] for r in recs])),
             "rank_hist": np.mean([r["rank_hist"] for r in recs], axis=0).tolist(),
             "retx_rbg_fraction": float(np.mean([r["retx_rbg_fraction"] for r in recs])),
+            "retx_moved_fraction": float(np.mean([r.get("retx_moved_fraction", 0.0)
+                                                  for r in recs])),
             "mean_active_ues": float(np.mean([r.get("mean_active_ues", 0.0) for r in recs])),
             "arrivals_blocked": int(sum(r.get("arrivals_blocked", 0) for r in recs)),
             "runtime_s": float(np.sum([r["runtime_s"] for r in recs]))}
