@@ -30,6 +30,9 @@ retransmission (``harq_refill='always'``).  The screening variants of
             the loops with at least 20 ACK/NACKs (warm start), plus the fast
             start on every loop; NR runs with both (for sic-fix-warmfast, NR
             is the irc-fix-warmfast run)
+  *-async   asynchronous HARQ (harq_mode='async'): a due retransmission has
+            priority but takes the best free RBGs for the UT's current report
+            instead of its own; NR runs with it too
 
 Cases, both with CSI every 20 ms that is 4 ms old when used:
 
@@ -112,7 +115,10 @@ VARIANTS = {"irc-olla": dict(_LEGACY), "sic-olla": dict(_SIC, **_LEGACY),
             "sic-fix-b": dict(_SIC, **_B), "sic-fix-ab": dict(_SIC, **_A, **_B),
             "irc-fix-fast": dict(_FAST), "irc-fix-fastw": dict(_FASTW),
             "irc-fix-warmfast": dict(_FAST, olla_warm_samples=20),
-            "sic-fix-warmfast": dict(_SIC, **_FAST, olla_warm_samples=20)}
+            "sic-fix-warmfast": dict(_SIC, **_FAST, olla_warm_samples=20),
+            "irc-fix-warmfast-async": dict(_FAST, olla_warm_samples=20, harq_mode="async"),
+            "sic-fix-warmfast-async": dict(_SIC, **_FAST, olla_warm_samples=20,
+                                           harq_mode="async")}
 PUBLISHED_VARIANTS = ("irc-olla", "sic-olla")
 SCREEN_VARIANTS = ("irc-fix", "irc-fix-b", "sic-fix", "sic-fix-a", "sic-fix-b", "sic-fix-ab")
 
@@ -212,6 +218,7 @@ def _worker(task):
                 mean_rank=r.mean_rank, rank_hist=list(r.rank_hist),
                 mean_codewords=r.mean_codewords, mean_mcs=r.mean_mcs,
                 retx_rbg_fraction=r.retx_rbg_fraction,
+                retx_moved_fraction=r.retx_moved_fraction,
                 mean_active_ues=round(r.mean_active_ues, 3),
                 arrivals_blocked=r.arrivals_blocked)
 

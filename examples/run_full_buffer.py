@@ -67,6 +67,9 @@ def main():
     ap.add_argument("--harq-refill", default="fresh", choices=("fresh", "always"),
                     help="multi-codeword retransmissions: refill decoded codewords only "
                          "with fresh CSI (and data), or always")
+    ap.add_argument("--harq-mode", default="sync", choices=("sync", "async"),
+                    help="SU retransmissions: one round trip later on their own RBGs "
+                         "(sync), or with priority on the best free RBGs (async)")
     ap.add_argument("--ri-olla", action="store_true",
                     help="RI metric on OLLA-corrected CQIs (use with --olla-per-rank)")
     ap.add_argument("--ri-sic-propagation", action="store_true",
@@ -111,7 +114,8 @@ def main():
                               olla_fast_gain=args.olla_fast_gain,
                               olla_fast_samples=args.olla_fast_samples,
                               olla_fast_min_cw=args.olla_fast_min_cw,
-                              olla_warm_samples=args.olla_warm_samples)
+                              olla_warm_samples=args.olla_warm_samples,
+                              harq_mode=args.harq_mode)
         t0 = time.time()
         r = run_full_buffer(cfg, fb, args.drops, seed=1, n_jobs=args.jobs)
         ue_se[cb] = r["ue_se"]
@@ -144,7 +148,7 @@ def main():
             "ri_sic_propagation": args.ri_sic_propagation,
             "olla_fast_gain": args.olla_fast_gain, "olla_fast_samples": args.olla_fast_samples,
             "olla_fast_min_cw": args.olla_fast_min_cw,
-            "olla_warm_samples": args.olla_warm_samples}
+            "olla_warm_samples": args.olla_warm_samples, "harq_mode": args.harq_mode}
     with open(os.path.join(OUT, f"{args.tag}_full_buffer.json"), "w") as f:
         json.dump({"config": meta, "results": summary,
                    "ue_se": {k: [round(float(x), 5) for x in v] for k, v in ue_se.items()}},

@@ -137,6 +137,15 @@ class FullBufferConfig:
     # stale CSI or padding only, which can keep a transmission in HARQ for
     # hundreds of slots (the behaviour before 2026-11-06)
     harq_refill: str = "fresh"
+    # SU retransmission timing and resources: 'sync' sends a due
+    # retransmission one round trip (harq_rtt_slots) after the failed
+    # transmission, before new data, on the RBGs of its first transmission
+    # (a slot later if they are taken); 'async' (asynchronous, adaptive in
+    # frequency) gives a due retransmission priority but lets it take any free
+    # RBGs: as many as before, the best ones for the UT's current report
+    # (its own RBGs if the report's rank differs), and waits a slot when not
+    # enough are free.  MCS, TBS and rank stay, so chase combining continues
+    harq_mode: str = "sync"
     # rank adaptation (phy/csi.py): ri_olla makes the UT's RI metric use its
     # CQIs after the gNB's OLLA offsets (per rank with olla_per_rank), an
     # idealised coupling of rank adaptation and OLLA; ri_sic_propagation
@@ -201,6 +210,7 @@ class FullBufferResult:
     mean_layers_per_rbg: float = 0.0  # layers per used RBG
     mu_tb_fraction: float = 0.0       # first transmissions with co-scheduling
     retx_rbg_fraction: float = 0.0    # RBG-slots carrying retransmissions
+    retx_moved_fraction: float = 0.0  # retransmissions sent on other RBGs (async HARQ)
     mu_sinr_error_db: float = 0.0     # gNB MU SINR estimate - actual (mean)
     mean_codewords: float = 1.0       # codewords per new transmission
     rank_hist: tuple = ()             # share of new transmissions at rank 1..4
@@ -243,6 +253,24 @@ def _pf_rate(cur):
     if s.ndim == 1:
         return rep.rank * np.log2(1 + 10 ** (s / 10))
     return sum(len(g) * np.log2(1 + 10 ** (s[k] / 10)) for k, g in enumerate(rep.groups))
+
+
+def _async_rbgs(unit: list, free: np.ndarray, cur, rbg_sig: list):
+    """RBGs of an asynchronous retransmission (harq_mode 'async'): as many as
+    the unit had, the free ones with the highest PF rate for the UT's current
+    report ``cur`` when the report has the unit's rank (so its per-codeword
+    sub-band SINRs fit the TBs) and the RBGs have the same RB pattern as the
+    old ones; else the unit's own RBGs if they are free; None if neither
+    fits (the retransmission waits a slot)."""
+    rb = unit[0]["rbgs"]
+    n = len(rb)
+    if cur is not None and cur[0].rank == unit[0]["rank"] and free.sum() >= n:
+        cand = np.flatnonzero(free)
+        rate = _pf_rate(cur)[cand]
+        pick = np.sort(cand[np.argsort(-rate, kind="stable")[:n]])
+        if [rbg_sig[b] for b in pick] == [rbg_sig[b] for b in rb]:
+            return pick
+    return rb if free[rb].all() else None
 
 
 def _rbg_bits(cur, rb_per_rbg, n_re):
@@ -391,6 +419,10 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     sic = fb.receiver == "sic" and max_cw > 1
     if fb.harq_refill not in ("fresh", "always"):
         raise ValueError("harq_refill must be 'fresh' or 'always'")
+    if fb.harq_mode not in ("sync", "async"):
+        raise ValueError("harq_mode must be 'sync' or 'async'")
+    if fb.harq_mode == "async" and fb.mu_mimo:
+        raise ValueError("asynchronous HARQ is SU-MIMO only")
     if (fb.olla_fast_gain <= 0 or fb.olla_fast_samples < 0 or fb.olla_fast_min_cw < 0
             or fb.olla_warm_samples < 0):
         raise ValueError("olla_fast_gain must be > 0, olla_fast_samples, olla_fast_min_cw "
@@ -455,6 +487,9 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     n_f = len(f_hz)
 
     rbg_mask = rbg_f[None, :] == np.arange(n_rbg)[:, None]      # (n_rbg, F)
+    # RBs per channel point of each RBG: a retransmission may move only to
+    # RBGs with the same pattern, so that chase combining adds like with like
+    rbg_sig = [tuple(nrb_f[rbg_mask[b]]) for b in range(n_rbg)]
     bs, ue_ant = cfg.bs_antenna, cfg.ue_antenna
     n_s, n_u = bs.n_ports, ue_ant.n_ports
 
@@ -498,7 +533,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     first_f = np.argmax(rbg_mask, axis=1)                   # first point of each RBG
     mu_stats = {"ues": [], "layers": []}
     n_mu_first = 0
-    diag = {"retx_rbg": 0, "rbg": 0, "err": []}
+    diag = {"retx_rbg": 0, "rbg": 0, "err": [], "retx_units": 0, "retx_moved": 0}
     proc = CSIProcessor(bs.Np, bs.Mp, 4, 4 if bs.Mp > 1 else 1,
                         codebook=fb.codebook,
                         max_rank=min(fb.max_rank, n_u), mcs_table=fb.mcs_table,
@@ -598,6 +633,23 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
             for unit in harq_units([t for t in due if t["cell"] == c]):
                 tb = unit[0]                  # all TBs of a unit share RBGs, rank, w
                 rb = tb["rbgs"]
+                if fb.harq_mode == "async":
+                    cur = current[tb["ue"]]
+                    rb = _async_rbgs(unit, free, cur, rbg_sig)
+                    if rb is None:            # not enough free RBGs: next slot
+                        for t in unit:
+                            t["due"] = slot + 1
+                            harq.append(t)
+                        continue
+                    moved = not np.array_equal(rb, tb["rbgs"])
+                    if moved:
+                        for t in unit:
+                            t["rbgs"] = rb
+                            if "cw_sinr" in t:          # the report has the unit's rank
+                                t["cw_sinr"] = cur[1][:, rb]
+                    if slot >= fb.warmup_slots:
+                        diag["retx_units"] += 1
+                        diag["retx_moved"] += int(moved)
                 # MU: a retransmission joins its RBGs' co-scheduled sets (one
                 # per UT and slot); otherwise it takes its RBGs alone
                 if (fb.mu_mimo and fb.mu_max_ues > 1 and tb["ue"] not in busy
@@ -883,6 +935,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                              else float(np.mean(rank_log)) if rank_log else 0.0),
         mu_tb_fraction=n_mu_first / max(n_first, 1),
         retx_rbg_fraction=diag["retx_rbg"] / max(diag["rbg"], 1),
+        retx_moved_fraction=diag["retx_moved"] / max(diag["retx_units"], 1),
         mu_sinr_error_db=float(np.mean(diag["err"])) if diag["err"] else 0.0,
         mean_codewords=float(np.mean(ncw_log)) if ncw_log else 0.0,
         rank_hist=tuple(float(np.mean(np.array(rank_log) == r)) if rank_log else 0.0
@@ -933,6 +986,7 @@ def aggregate_drops(res: list) -> dict:
         "mean_layers_per_rbg": float(np.mean([r.mean_layers_per_rbg for r in res])),
         "mu_tb_fraction": float(np.mean([r.mu_tb_fraction for r in res])),
         "retx_rbg_fraction": float(np.mean([r.retx_rbg_fraction for r in res])),
+        "retx_moved_fraction": float(np.mean([r.retx_moved_fraction for r in res])),
         "mu_sinr_error_db": float(np.mean([r.mu_sinr_error_db for r in res])),
         "mean_codewords": float(np.mean([r.mean_codewords for r in res])),
         "rank_hist": np.mean([r.rank_hist for r in res], axis=0).tolist(),
