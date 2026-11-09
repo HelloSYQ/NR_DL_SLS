@@ -166,6 +166,18 @@ SETUPS = {
                        cal_rates=(5.0, 8.0, 11.0, 14.0, 17.0, 20.0),
                        carrier="4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB)",
                        power="44 dBm per 20 MHz"),
+    # the same with the users' hand grip (TR 38.901 7.6.4.1 UT self-blocking:
+    # portrait / landscape 50 / 50, random orientation, 30 dB); the arrival
+    # rates are recalibrated for it
+    "20mhz-ftp1-grip": dict(preset=dict(carrier=CarrierConfig(mu=1, n_size_grid=52),
+                                        bs_tx_power_dbm=44.0, channel_bandwidth_hz=20e6,
+                                        ue_per_cell=20, ue_self_blocking=True),
+                            traffic="ftp1",
+                            rates=os.path.join(OUT, "cw2lm_ftp1_grip_rates_20mhz.json"),
+                            out=os.path.join(OUT, "cw2lm_ftp1_grip_20mhz.json"),
+                            cal_rates=(5.0, 8.0, 11.0, 14.0, 17.0, 20.0),
+                            carrier="4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB)",
+                            power="44 dBm per 20 MHz"),
 }
 CAL_RATES = SETUPS[DEFAULT_SETUP]["cal_rates"]
 

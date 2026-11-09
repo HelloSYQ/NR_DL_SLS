@@ -159,6 +159,17 @@ class ScenarioConfig:
     # Large-scale calibration only (coupling gain and geometry).
     calib_beams: tuple = ()
 
+    # --- UT self-blocking: the user's hand and body (TR 38.901 7.6.4.1,
+    # blockage model A without non-self blockers).  Each UT is held in
+    # landscape mode (two hands) with probability self_blocking_landscape_ratio,
+    # else in portrait mode (one hand), with a random azimuth orientation
+    # that also turns its array; a cluster arriving in the mode's region of
+    # Table 7.6.4.1-1 loses self_blocking_db.  Drawn from a child stream:
+    # the drop is otherwise unchanged.  Needs coupling_model='multipath'.
+    ue_self_blocking: bool = False
+    self_blocking_landscape_ratio: float = 0.5
+    self_blocking_db: float = 30.0
+
     # --- antennas ---
     bs_antenna: BSAntennaConfig = field(default_factory=BSAntennaConfig)
     ue_antenna: UEAntenna = field(default_factory=UEAntenna)
@@ -173,6 +184,12 @@ class ScenarioConfig:
             raise ValueError(f"unknown coupling model {self.coupling_model!r}")
         if self.calib_beams and self.coupling_model != "multipath":
             raise ValueError("calib_beams needs coupling_model='multipath'")
+        if self.ue_self_blocking and self.coupling_model != "multipath":
+            raise ValueError("ue_self_blocking needs coupling_model='multipath'")
+        if not 0.0 <= self.self_blocking_landscape_ratio <= 1.0:
+            raise ValueError("self_blocking_landscape_ratio must be in [0, 1]")
+        if self.self_blocking_db < 0:
+            raise ValueError("self_blocking_db must be >= 0")
         if self.o2i_model == "legacy" and self.family not in ("uma", "umi"):
             raise ValueError("the legacy O2I model covers UMa and UMi only")
 
