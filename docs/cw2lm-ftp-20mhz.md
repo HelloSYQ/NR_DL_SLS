@@ -7,6 +7,26 @@ This repeats the FTP study of [cw2lm-ftp.md](cw2lm-ftp.md) with a different carr
 - **Blocks:** the "Reciprocity based precoding" rows hold sub-band SVD and "Other precoding scheme" wideband SVD; the codebook blocks are empty.
 - **Sources:** tables in [results/cw2lm_ftp1_warmfast_20mhz.md](../results/cw2lm_ftp1_warmfast_20mhz.md), filled by `examples/fill_cw2l_template_ftp1.py`.
 
+**Hand grip, 2026-11-09.** The FTP model 1 warm + fast set was rerun with the users' hand grip. The model is the UT self-blocking of TR 38.901 §7.6.4.1, blockage model A without the non-self blockers (`ue_self_blocking=True`).
+- **Model:** each UT is held in portrait mode (one hand) or landscape mode (two hands), half and half. Its random azimuth orientation also turns its array. A cluster whose centre arrives in the grip's region of Table 7.6.4.1-1 loses 30 dB, and so does the LOS ray when it arrives there. In-car UTs are held like the others.
+- **Runs:** the arrival rates were recalibrated with the grip, then the full set reran: 360 runs, 10 drops. An extra 80 NR runs at the no-grip rates separate the array orientation from the blocking. The tables are in [results/cw2lm_ftp1_grip_20mhz.md](../results/cw2lm_ftp1_grip_20mhz.md), whose script, `examples/cw2lm_ftp1_grip_compare.py`, lists the commands.
+- **What the grip does to a drop:**
+  - **Blocking:** it blocks 25 % of the serving link's clusters, which carry 26 % of its multipath power on average.
+  - **Re-attachment:** 19 % of the UTs change cell. Their strongest cell is then 1.1 dB weaker at the median, 2.4 dB on average and 6.5 dB at the 90th percentile.
+  - **Interference:** the grip blocks interferers too, so the full-load geometry rises by 0.1–0.2 dB in mean and median. The 200 m layout is interference-limited.
+- **NR:**
+  - **Rates:** the same RU takes 2–4 % more arrivals with the grip.
+  - **Same rates:** at the no-grip rates, NR's mean UPT changes by +0.1 to +2.0 %. The array orientation alone accounts for −0.5 to +1.5 % and the blocking for −0.8 to +2.4 %.
+  - **Rank:** NR's mean rank changes by at most 0.03.
+- **The CW2L comparison does not change:**
+  - **MMSE-IRC:** LTE style, twisted LTE and one codeword per layer are within −0.7 to +1.6 % of NR in mean UPT, against −1.4 to +2.3 % without the grip.
+  - **SIC:** LTE style and one codeword per layer gain +9.3 to +13.0 %, against +8.3 to +12.4 %. All 120 single-drop gains with SIC are positive, with and without the grip.
+  - **Shifts:** each mean gain moves by −0.7 to +2.1 points, and each 5th-percentile gain by −3.0 to +3.8.
+- **Limits:**
+  - **95th percentile at 20 % RU:** it sits at the peak rate (about 250 Mbit/s) and swings with the share of files that reach it, so its gains there are not meaningful.
+  - **Interference-limited layout:** in a noise-limited deployment the grip's power loss would weigh more.
+  - **Template:** the template copy still holds the no-grip set.
+
 | | 10 MHz study ([cw2lm-ftp.md](cw2lm-ftp.md)) | This study (`--setup 20mhz`) |
 |---|---|---|
 | Carrier | 4 GHz FDD, 15 kHz SCS, 52 PRB, 10 MHz | 4 GHz FDD, 30 kHz SCS, 52 PRB, 20 MHz channel |
