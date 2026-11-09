@@ -40,7 +40,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from nrdlsim import mcs_tables, tbs as tbs_mod                     # noqa: E402
 from nrdlsim.link_abstraction import _waterfall, effective_sinr_miesm  # noqa: E402
 
-from nrsls.config.scenario import get_preset                        # noqa: E402
+from nrsls.config.scenario import DU_A_MIXED_O2I, get_preset  # noqa: E402
 from nrsls.engine import fullbuffer as fbm                           # noqa: E402
 from nrsls.engine import link as link_mod                            # noqa: E402
 from nrsls.engine.fullbuffer import FullBufferConfig                 # noqa: E402
@@ -174,7 +174,9 @@ def main() -> int:
     ap.add_argument("--ues", type=int, default=None, help="UTs per cell (default: preset)")
     args = ap.parse_args()
 
-    cfg = get_preset("du-a") if args.ues is None else get_preset("du-a", ue_per_cell=args.ues)
+    # the published results used du-a's former building mix (DU_A_MIXED_O2I)
+    extra = {} if args.ues is None else {"ue_per_cell": args.ues}
+    cfg = get_preset("du-a", **DU_A_MIXED_O2I, **extra)
     cases = {
         # Apple-like CSI: eType-II, 20 ms period, 4 ms delay (15 kHz: 1 ms slots)
         "etype2_20ms": FullBufferConfig(n_slots=args.slots, warmup_slots=args.warmup,

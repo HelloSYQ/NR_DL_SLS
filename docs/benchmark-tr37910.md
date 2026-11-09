@@ -60,7 +60,7 @@ The previous MU configuration (ZF, ≤ 4 UTs / 8 layers) gave 11.02 / 0.411 (ide
 | gNB array | (8,8,2,1,1;2,8), element gain 8 dBi, electrical tilt 102° | TR 37.910 table; M.2412 |
 | UTs | 10 per TRxP, 4 ports (1,2,2), 0 dBi; 80 % indoor (floors per TR 38.901), 20 % outdoor in car | M.2412 Table 5b |
 | Mobility | indoor 3 km/h, in car 30 km/h | M.2412 Table 5b |
-| Propagation | TR 38.901 UMa (= channel model A, which matched the RP-180524 UMa calibration), building loss 20 % high / 80 % low, car loss N(9, 5) dB | M.2412; phase 2 |
+| Propagation | TR 38.901 UMa (= channel model A, which matched the RP-180524 UMa calibration), building loss 20 % high / 80 % low, car loss N(9, 5) dB. This was the `du-a` preset when these runs were made. Since 2026-11-03 `du-a` uses the M.2412 channel-model-A building loss (20 dB + 0.5 d2D-in); the current numbers are in [validation-du-a.md](validation-du-a.md) | M.2412; phase 2 |
 | SE normalisation | throughput / 10 MHz channel bandwidth (52 PRB occupy 9.36 MHz) | M.2410 |
 | Overhead | PDCCH 2 symbols; DM-RS 24 REs/PRB (2 symbols, also for ports 0–7 with a double-symbol front-loaded DM-RS); CSI-RS 32 ports + CSI-IM every 5 ms, TRS, SSB ≈ 9 REs/PRB/slot → 111 data REs per PRB and slot (66 % of the REs) | our estimate (the companies' overhead assumptions are in TR attachments not available here) |
 | CSI | period 5 ms, delay 4 ms, 4-PRB sub-bands (N3 = 13), RI ≤ 2 | |

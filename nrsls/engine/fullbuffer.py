@@ -29,7 +29,10 @@ layer (``nrdlsim.layer_mapping.layer_groups``).  With more than one
 codeword the report carries per-codeword CQIs, RI maximises the sum over
 codewords, every codeword is its own TB with its own MCS, OLLA loop
 (``olla_per_rank``: also per rank) and HARQ process, and the PF metric sums
-the codewords' rates; see ``engine/link.py`` for retransmissions.  Two
+the codewords' rates; see ``engine/link.py`` for retransmissions
+(``harq_refill``: whether a retransmission refills its decoded codewords).
+``ri_olla`` and ``ri_sic_propagation`` couple the UT's rank selection to
+OLLA and to SIC error propagation (``phy/csi.py``).  Two
 references for comparing mappings: ``receiver='sic'`` (codeword-level
 MMSE-SIC: the codewords are decoded in index order, each one that decodes
 is cancelled, and the CQIs are reported for it) and ``ideal_la`` (each new
@@ -44,7 +47,7 @@ bandwidth)), first-transmission BLER, rank and MCS statistics.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -83,6 +86,18 @@ class FullBufferConfig:
     mcs_table: int = 2
     target_bler: float = 0.1
     olla_step_db: float = 0.5
+    # OLLA fast start (mac/link_adaptation.py): the first olla_fast_samples
+    # ACK/NACKs of a loop (since the UT arrived, or the drop began) move it
+    # olla_fast_gain times the normal steps, same ratio and so same target,
+    # for codewords >= olla_fast_min_cw (0: every loop, NR's included; 1: all
+    # but codeword 0, which carries the strongest layer)
+    olla_fast_gain: float = 1.0
+    olla_fast_samples: int = 0
+    olla_fast_min_cw: int = 0
+    # OLLA warm start (FTP model 1): a new UT's loops start from the mean
+    # offset of the other UTs' loops (same codeword and rank) that have had at
+    # least olla_warm_samples ACK/NACKs, instead of 0 dB (0: off)
+    olla_warm_samples: int = 0
     harq_max_tx: int = 4
     harq_rtt_slots: int = 8
     pf_window_slots: float = 100.0
@@ -114,6 +129,30 @@ class FullBufferConfig:
     # a refilled codeword its first-transmission CQI); True re-precodes the
     # PDSCH with the UT's current report if its rank matches
     harq_adaptive: bool = False
+    # multi-codeword retransmissions: 'fresh' refills a decoded codeword's
+    # layers with a new TB only if the UT's current report has the
+    # transmission's rank and the UT has data left (FTP), else disables the
+    # codeword and retransmits the rest alone (engine/link.py
+    # retransmission); 'always' refills every decoded codeword, even with
+    # stale CSI or padding only, which can keep a transmission in HARQ for
+    # hundreds of slots (the behaviour before 2026-11-06)
+    harq_refill: str = "fresh"
+    # SU retransmission timing and resources: 'sync' sends a due
+    # retransmission one round trip (harq_rtt_slots) after the failed
+    # transmission, before new data, on the RBGs of its first transmission
+    # (a slot later if they are taken); 'async' (asynchronous, adaptive in
+    # frequency) gives a due retransmission priority but lets it take any free
+    # RBGs: as many as before, the best ones for the UT's current report
+    # (its own RBGs if the report's rank differs), and waits a slot when not
+    # enough are free.  MCS, TBS and rank stay, so chase combining continues
+    harq_mode: str = "sync"
+    # rank adaptation (phy/csi.py): ri_olla makes the UT's RI metric use its
+    # CQIs after the gNB's OLLA offsets (per rank with olla_per_rank), an
+    # idealised coupling of rank adaptation and OLLA; ri_sic_propagation
+    # weights codeword k of a SIC receiver by (1 - target_bler)^k, the
+    # chance that the codewords before it decode
+    ri_olla: bool = False
+    ri_sic_propagation: bool = False
     # SU receiver: 'irc' (MMSE-IRC) or 'sic' (codeword-level MMSE-SIC, ideal
     # cancellation of the codewords that decode, decoded in index order; the
     # UT reports each codeword's CQI after the earlier ones are cancelled).
@@ -126,14 +165,32 @@ class FullBufferConfig:
     # ideal link adaptation (a reference, SU): every new TB takes the highest
     # MCS meeting target_bler on the SINR it actually gets (OLLA unused)
     ideal_la: bool = False
+    # traffic (SU): 'full_buffer', or 'ftp3', FTP model 3 (TR 36.814 A.2.1.3.2,
+    # TR 38.802): files of ftp_file_bytes arrive at every UT as a Poisson
+    # process of ftp_rate_per_ue files/s; see run_full_buffer_drop
+    traffic: str = "full_buffer"
+    ftp_file_bytes: float = 0.5e6
+    ftp_rate_per_ue: float = 0.0
+    # FTP: files arriving in the last ftp_drain_slots are served, not counted
+    ftp_drain_slots: int = 0
+    # 'ftp1', FTP model 1 (TR 36.814 A.2.1.3.1): UTs arrive as a Poisson process
+    # of ftp1_rate_per_cell per cell, at uniformly random places, each
+    # downloads one file of ftp_file_bytes and leaves.  An arrival takes an
+    # idle UT of the drop (a pool of ue_per_cell per cell, which should be
+    # well above the number of UTs active at once) and starts it with fresh
+    # OLLA and an aperiodic CSI report
+    ftp1_rate_per_cell: float = 0.0
 
 
 # maximum codewords per transmission.  Up to rank 4 the three splits are
 #   'nr'        one codeword on all layers (TS 38.211 Table 7.3.1.3-1);
 #   'lte'       {1} / {1,1} / {1,2} / {2,2} for ranks 1-4, the LTE mapping of
 #               TS 36.211 Table 6.3.3.2-1 (and the NR split of ranks 5-8);
+#   'lte_twisted' as 'lte' but {1,3} at rank 4: codeword 0 on layer 0 (the
+#               strongest), codeword 1 on layers 1-3;
 #   'per_layer' one codeword per layer.
-CW_MAPPINGS = {"alt1": 1, "alt2": 2, "alt3": 4, "nr": 1, "lte": 2, "per_layer": 4}
+CW_MAPPINGS = {"alt1": 1, "alt2": 2, "alt3": 4, "nr": 1, "lte": 2, "per_layer": 4,
+               "lte_twisted": 2, "alt2t": 2}
 
 
 @dataclass
@@ -153,10 +210,30 @@ class FullBufferResult:
     mean_layers_per_rbg: float = 0.0  # layers per used RBG
     mu_tb_fraction: float = 0.0       # first transmissions with co-scheduling
     retx_rbg_fraction: float = 0.0    # RBG-slots carrying retransmissions
+    retx_moved_fraction: float = 0.0  # retransmissions sent on other RBGs (async HARQ)
     mu_sinr_error_db: float = 0.0     # gNB MU SINR estimate - actual (mean)
     mean_codewords: float = 1.0       # codewords per new transmission
     rank_hist: tuple = ()             # share of new transmissions at rank 1..4
     bler_first_cw: tuple = ()         # first-transmission BLER per codeword index
+    # FTP: used RBG-slots / all RBG-slots after warm-up (1 with full buffer),
+    # the UPT (size / (completion - arrival)) and UT of every file that
+    # arrived in the measurement window and completed, and how many arrived
+    resource_utilization: float = 1.0
+    file_upt_bps: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    file_ue: np.ndarray = field(default_factory=lambda: np.zeros(0, int))
+    files_counted: int = 0
+    # FTP: counted files still open at the end, as an upper bound on their
+    # UPT (size / (end of run - arrival)), and their UTs
+    file_upt_open_bps: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    file_ue_open: np.ndarray = field(default_factory=lambda: np.zeros(0, int))
+    # FTP: arrival time [s] of each completed and each open counted file (a
+    # drain can then be applied afterwards: keep files that arrived early enough)
+    file_arrival_s: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    file_arrival_open_s: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    # FTP: UTs with data per cell, averaged over the slots after warm-up; FTP
+    # model 1: arrivals that found no idle UT in the pool (queued behind one)
+    mean_active_ues: float = 0.0
+    arrivals_blocked: int = 0
 
 
 def _links(d, k):
@@ -176,6 +253,36 @@ def _pf_rate(cur):
     if s.ndim == 1:
         return rep.rank * np.log2(1 + 10 ** (s / 10))
     return sum(len(g) * np.log2(1 + 10 ** (s[k] / 10)) for k, g in enumerate(rep.groups))
+
+
+def _async_rbgs(unit: list, free: np.ndarray, cur, rbg_sig: list):
+    """RBGs of an asynchronous retransmission (harq_mode 'async'): as many as
+    the unit had, the free ones with the highest PF rate for the UT's current
+    report ``cur`` when the report has the unit's rank (so its per-codeword
+    sub-band SINRs fit the TBs) and the RBGs have the same RB pattern as the
+    old ones; else the unit's own RBGs if they are free; None if neither
+    fits (the retransmission waits a slot)."""
+    rb = unit[0]["rbgs"]
+    n = len(rb)
+    if cur is not None and cur[0].rank == unit[0]["rank"] and free.sum() >= n:
+        cand = np.flatnonzero(free)
+        rate = _pf_rate(cur)[cand]
+        pick = np.sort(cand[np.argsort(-rate, kind="stable")[:n]])
+        if [rbg_sig[b] for b in pick] == [rbg_sig[b] for b in rb]:
+            return pick
+    return rb if free[rb].all() else None
+
+
+def _rbg_bits(cur, rb_per_rbg, n_re):
+    """Bits per RBG a UT's report would carry, for buffer-aware scheduling:
+    Shannon on the CQI SINR of each layer, capped at 7.4 bit/RE (256QAM)."""
+    rep, s = cur[0], cur[1]
+    se = lambda x: np.minimum(np.log2(1 + 10 ** (x / 10)), 7.4)
+    if s.ndim == 1:
+        per_re = rep.rank * se(s)
+    else:
+        per_re = sum(len(g) * se(s[k]) for k, g in enumerate(rep.groups))
+    return per_re * n_re * rb_per_rbg
 
 
 def _report_vectors(rep, n_rbg, first_f):
@@ -305,10 +412,30 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     if fb.receiver not in ("irc", "sic"):
         raise ValueError("receiver must be 'irc' or 'sic'")
     if fb.mu_mimo and (max_cw > 1 or fb.olla_per_rank or fb.harq_adaptive
-                       or fb.receiver != "irc" or fb.ideal_la or fb.olla_sic_conditional):
-        raise ValueError("multi-codeword mappings, per-rank OLLA, adaptive HARQ, SIC "
-                         "and ideal link adaptation are SU-MIMO only")
+                       or fb.receiver != "irc" or fb.ideal_la or fb.olla_sic_conditional
+                       or fb.ri_olla):
+        raise ValueError("multi-codeword mappings, per-rank OLLA, adaptive HARQ, SIC, "
+                         "OLLA-corrected RI and ideal link adaptation are SU-MIMO only")
     sic = fb.receiver == "sic" and max_cw > 1
+    if fb.harq_refill not in ("fresh", "always"):
+        raise ValueError("harq_refill must be 'fresh' or 'always'")
+    if fb.harq_mode not in ("sync", "async"):
+        raise ValueError("harq_mode must be 'sync' or 'async'")
+    if fb.harq_mode == "async" and fb.mu_mimo:
+        raise ValueError("asynchronous HARQ is SU-MIMO only")
+    if (fb.olla_fast_gain <= 0 or fb.olla_fast_samples < 0 or fb.olla_fast_min_cw < 0
+            or fb.olla_warm_samples < 0):
+        raise ValueError("olla_fast_gain must be > 0, olla_fast_samples, olla_fast_min_cw "
+                         "and olla_warm_samples >= 0")
+    if fb.traffic not in ("full_buffer", "ftp3", "ftp1"):
+        raise ValueError("traffic must be 'full_buffer', 'ftp3' or 'ftp1'")
+    ftp = fb.traffic in ("ftp3", "ftp1")
+    ftp1 = fb.traffic == "ftp1"
+    if ftp and fb.mu_mimo:
+        raise ValueError("FTP traffic is SU-MIMO only")
+    # FTP arrivals from a child stream: the same files for every scheme, and
+    # the drop itself unchanged (spawning does not advance rng)
+    trng = rng.spawn(1)[0] if ftp else None
     d = generate_drop(cfg, rng, keep_clusters=True)
     lay, n_ue = d.layout, d.ues.n
     car = cfg.carrier
@@ -360,6 +487,9 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     n_f = len(f_hz)
 
     rbg_mask = rbg_f[None, :] == np.arange(n_rbg)[:, None]      # (n_rbg, F)
+    # RBs per channel point of each RBG: a retransmission may move only to
+    # RBGs with the same pattern, so that chase combining adds like with like
+    rbg_sig = [tuple(nrb_f[rbg_mask[b]]) for b in range(n_rbg)]
     bs, ue_ant = cfg.bs_antenna, cfg.ue_antenna
     n_s, n_u = bs.n_ports, ue_ant.n_ports
 
@@ -374,13 +504,27 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         h *= amp.reshape(-1)[:, None, None, None]
         return h.reshape(n_ue, k + 1, n_f, n_u, n_s)
 
+    def channels_for(t, ues):
+        """channels(t) of the UTs ``ues`` only: (len(ues), 1+K, F, Ua, S)."""
+        links = (ues[:, None] * (k + 1) + np.arange(k + 1)).reshape(-1)
+        out = np.empty((links.size, n_f, n_u, n_s), np.complex64)
+        for a in range(0, links.size, fb.link_batch):
+            fl = links[a:a + fb.link_batch]
+            out[a:a + fl.size] = channel_batch(subset_clusters(cl_all, pos[fl]), bearing[fl],
+                                               bs, ue_ant, f_hz, t, vel[fl], lam, d3d[fl])
+        out *= amp.reshape(-1)[links][:, None, None, None]
+        return out.reshape(ues.size, k + 1, n_f, n_u, n_s)
+
     # --- PHY / MAC state ---
     pdsch = PDSCHConfig(num_rb=n_rb, start_symbol=fb.pdcch_symbols,
                         num_symbols=14 - fb.pdcch_symbols, n_oh=fb.overhead_re_per_prb)
     n_re = tbs_mod.re_per_rb(pdsch.num_symbols, rg.dmrs_re_per_rb(pdsch), pdsch.n_oh)
+    fast = dict(fast_gain=fb.olla_fast_gain, fast_samples=fb.olla_fast_samples,
+                fast_min_cw=fb.olla_fast_min_cw, warm_samples=fb.olla_warm_samples)
     la = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db,
-                        n_cw=max_cw, per_rank=fb.olla_per_rank, max_rank=4)
-    la_mu = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db)
+                        n_cw=max_cw, per_rank=fb.olla_per_rank, max_rank=4, **fast)
+    la_mu = LinkAdaptation(n_ue, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db,
+                           **fast)
     # mu_dmrs_overhead: type-1 double-symbol DM-RS (ports 0-7), front-loaded
     # + 1 additional pair, 2 CDM groups without data -> 4 x 12 REs per RB
     # pair, 2 CDM groups without data -> 4 x 12 DM-RS REs per RB
@@ -389,7 +533,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     first_f = np.argmax(rbg_mask, axis=1)                   # first point of each RBG
     mu_stats = {"ues": [], "layers": []}
     n_mu_first = 0
-    diag = {"retx_rbg": 0, "rbg": 0, "err": []}
+    diag = {"retx_rbg": 0, "rbg": 0, "err": [], "retx_units": 0, "retx_moved": 0}
     proc = CSIProcessor(bs.Np, bs.Mp, 4, 4 if bs.Mp > 1 else 1,
                         codebook=fb.codebook,
                         max_rank=min(fb.max_rank, n_u), mcs_table=fb.mcs_table,
@@ -397,7 +541,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                         n_beams=fb.n_beams, score_step=fb.pmi_score_step,
                         etype2_combo=fb.etype2_combo,
                         pmi_subband=fb.type1_subband_pmi,
-                        max_codewords=max_cw, sic=sic)
+                        max_codewords=max_cw, sic=sic, cw_mapping=fb.cw_mapping,
+                        ri_sic_propagation=fb.ri_sic_propagation)
     pending = [[] for _ in range(n_ue)]                   # (avail, report, sinr_sb)
     current = [None] * n_ue
     pf_avg = np.full(n_ue, 1.0)
@@ -409,13 +554,72 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     n_tx = 0                                              # transmission ids
     ue_of_cell = [np.nonzero(d.serving_cell == c)[0] for c in range(lay.n_cells)]
     h = None
+    if ftp:
+        # files: Poisson arrivals per UT over the run; a file arriving in
+        # [t_lo, t_hi) is counted.  Channels are computed only for the UTs
+        # decoded in a slot, and for all at CSI occasions (h_block: the
+        # channel-update block each UT's channel belongs to)
+        t_end = fb.n_slots * t_slot
+        size_bits = int(round(fb.ftp_file_bytes * 8))
+        if ftp1:
+            # UT arrivals over the network; each takes the first idle UT of
+            # eight drawn at random (the same for every scheme)
+            n_arr1 = int(trng.poisson(fb.ftp1_rate_per_cell * lay.n_cells * t_end))
+            arr_t = np.sort(trng.uniform(0, t_end, n_arr1))
+            arr_cand = trng.integers(0, n_ue, (n_arr1, 8))
+            arr_u = arr_cand[:, 0]
+        else:
+            n_arr = trng.poisson(fb.ftp_rate_per_ue * t_end, n_ue)
+            arr_t = trng.uniform(0, t_end, int(n_arr.sum()))
+            arr_u = np.repeat(np.arange(n_ue), n_arr)
+            order = np.argsort(arr_t, kind="stable")
+            arr_t, arr_u = arr_t[order], arr_u[order]
+        active = np.zeros(n_ue, bool)         # FTP model 1: UTs in the system
+        acsi = []                             # FTP model 1: aperiodic CSI this slot
+        n_blocked = n_with_data = 0
+        t_lo, t_hi = fb.warmup_slots * t_slot, (fb.n_slots - fb.ftp_drain_slots) * t_slot
+        files = [[] for _ in range(n_ue)]     # per UT, first in first out
+        unsched = np.zeros(n_ue, np.int64)    # bits not yet in a TB
+        n_arrived, files_counted, upt, upt_ue, upt_t = 0, 0, [], [], []
+        h_all = np.empty((n_ue, k + 1, n_f, n_u, n_s), np.complex64)
+        h_block = np.full(n_ue, -1)
+        hw_all = np.zeros((n_ue, n_f, n_u, n_s), np.complex128)
+        ru_used = ru_all = 0
 
     for slot in range(fb.n_slots):
-        if slot % fb.channel_update_slots == 0:
+        if not ftp and slot % fb.channel_update_slots == 0:
             h = channels(slot * t_slot)
+        if ftp:                               # files that arrived in the last slot
+            while n_arrived < arr_t.size and arr_t[n_arrived] < slot * t_slot:
+                t_a, u = arr_t[n_arrived], arr_u[n_arrived]
+                if ftp1:
+                    idle = [int(c) for c in arr_cand[n_arrived] if not active[c]]
+                    if idle:
+                        u = idle[0]
+                    else:
+                        free_ues = np.flatnonzero(~active)
+                        if free_ues.size:
+                            u = int(free_ues[n_arrived % free_ues.size])
+                        else:                 # pool exhausted: queue behind a UT
+                            u = int(arr_cand[n_arrived, 0])
+                            n_blocked += 1
+                    if not active[u]:         # a new UT enters the system
+                        active[u] = True
+                        la.reset(u)
+                        current[u], pending[u] = None, []
+                        pf_avg[u] = 1.0
+                        acsi.append(u)
+                counted = bool(t_lo <= t_a < t_hi)
+                files[u].append({"t": t_a, "unsched": size_bits, "left": size_bits,
+                                 "counted": counted})
+                unsched[u] += size_bits
+                files_counted += counted
+                n_arrived += 1
         for u in range(n_ue):                             # CSI becoming usable
             while pending[u] and pending[u][0][0] <= slot:
                 current[u] = pending[u].pop(0)[1:]
+        if ftp and slot >= fb.warmup_slots:
+            n_with_data += sum(1 for f in files if f)
 
         # 1. scheduling
         w_cell = np.zeros((lay.n_cells, n_f, n_s, n_lay), np.complex64)
@@ -429,6 +633,23 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
             for unit in harq_units([t for t in due if t["cell"] == c]):
                 tb = unit[0]                  # all TBs of a unit share RBGs, rank, w
                 rb = tb["rbgs"]
+                if fb.harq_mode == "async":
+                    cur = current[tb["ue"]]
+                    rb = _async_rbgs(unit, free, cur, rbg_sig)
+                    if rb is None:            # not enough free RBGs: next slot
+                        for t in unit:
+                            t["due"] = slot + 1
+                            harq.append(t)
+                        continue
+                    moved = not np.array_equal(rb, tb["rbgs"])
+                    if moved:
+                        for t in unit:
+                            t["rbgs"] = rb
+                            if "cw_sinr" in t:          # the report has the unit's rank
+                                t["cw_sinr"] = cur[1][:, rb]
+                    if slot >= fb.warmup_slots:
+                        diag["retx_units"] += 1
+                        diag["retx_moved"] += int(moved)
                 # MU: a retransmission joins its RBGs' co-scheduled sets (one
                 # per UT and slot); otherwise it takes its RBGs alone
                 if (fb.mu_mimo and fb.mu_max_ues > 1 and tb["ue"] not in busy
@@ -452,15 +673,23 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                         tb["col"] = np.zeros(n_rbg, int)
                         nrm = np.linalg.norm(tb["w"], axis=(1, 2), keepdims=True)
                         tb["w"] = np.where(nrm > 0, tb["w"] / np.maximum(nrm, 1e-12), 0)
+                    cur = current[tb["ue"]]
+                    if fb.harq_refill == "always":
+                        refill, budget = True, None
+                    else:
+                        refill = (cur is not None and cur[0].rank == tb["rank"]
+                                  and not tb.get("reduced", False))
+                        budget = int(unsched[tb["ue"]]) if ftp else None
                     txs += retransmission(la, unit, rb_per_rbg, n_re, fb.mcs_table, slot,
-                                          current[tb["ue"]] if fb.harq_adaptive else None)
+                                          cur if fb.harq_adaptive else None, refill, budget)
                 else:
                     for t in unit:
                         t["due"] = slot + 1
                         harq.append(t)
             if slot >= fb.warmup_slots and ue_of_cell[c].size:
                 diag["rbg"] += n_rbg
-            cand = [u for u in ue_of_cell[c] if current[u] is not None and u not in busy]
+            cand = [u for u in ue_of_cell[c] if current[u] is not None and u not in busy
+                    and (not ftp or unsched[u] > 0)]
             if fb.mu_mimo and free.any() and (cand or any(forced)):
                 stats = mu_stats if slot >= fb.warmup_slots else {"ues": [], "layers": []}
                 txs += _mu_schedule_cell(c, cand, free, forced, current, pf_avg, la,
@@ -469,7 +698,20 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
             elif cand and free.any():
                 met = np.array([_pf_rate(current[u])
                                 / pf_avg[u] for u in cand])        # (n_cand, n_rbg)
-                owner = np.where(free, np.argmax(met, axis=0), -1)
+                if ftp:
+                    # PF per RBG among the UTs whose buffer the RBGs given
+                    # so far do not yet cover (report-based estimate)
+                    need = unsched[cand].astype(float)
+                    est = np.array([_rbg_bits(current[u], rb_per_rbg, n_re) for u in cand])
+                    owner = np.full(n_rbg, -1)
+                    for b in np.nonzero(free)[0]:
+                        if not (need > 0).any():
+                            break
+                        i = int(np.argmax(np.where(need > 0, met[:, b], -np.inf)))
+                        owner[b] = i
+                        need[i] -= est[i, b]
+                else:
+                    owner = np.where(free, np.argmax(met, axis=0), -1)
                 for i, u in enumerate(cand):
                     rbgs = np.nonzero(owner == i)[0]
                     if rbgs.size == 0:
@@ -478,20 +720,73 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                     txs += new_txs(la, u, c, rep, sinr_sb, rbgs, rb_per_rbg,
                                    n_re, fb.mcs_table, slot, n_tx)
                     n_tx += 1
-            elif not any(t["cell"] == c for t in txs) and ue_of_cell[c].size:
+            elif not ftp and not any(t["cell"] == c for t in txs) and ue_of_cell[c].size:
                 g = rng.normal(size=(n_s,)) + 1j * rng.normal(size=(n_s,))
                 w_cell[c, :, :, 0] = g / np.linalg.norm(g)
+        placed = set()                        # multi-codeword transmissions
         for tb in txs:
             if fb.mu_mimo:
                 for b in tb["rbgs"]:
                     fm, o = rbg_mask[b], tb["col"][b]
                     w_cell[tb["cell"], fm, :, o:o + tb["rank"]] = tb["w"][fm]
-            elif tb.get("cw", 0) == 0:        # codewords share the precoder
+            elif tb.get("tx") not in placed:  # codewords share the precoder
+                if "tx" in tb:
+                    placed.add(tb["tx"])
                 fm = rbg_mask[tb["rbgs"]].any(axis=0)
                 w_cell[tb["cell"], fm, :, :tb["rank"]] = tb_precoder(tb, fm, rbg_f)
 
+        if ftp:
+            # new TBs take data from the buffer (a TB larger than the buffer
+            # is padded); the share of cells using each RBG scales the
+            # interference of the cells beyond the explicit ones
+            used = np.zeros((lay.n_cells, n_rbg), bool)
+            for tb in txs:
+                used[tb["cell"], tb["rbgs"]] = True
+                if "seg" not in tb:
+                    u, want, seg = tb["ue"], int(tb["bits"]), []
+                    for f in files[u]:
+                        if want <= 0:
+                            break
+                        m = min(want, f["unsched"])
+                        if m > 0:
+                            f["unsched"] -= m
+                            want -= m
+                            seg.append((f, m))
+                    tb["seg"], tb["payload"] = seg, sum(m for _, m in seg)
+                    unsched[u] -= tb["payload"]
+            util_f = used.mean(axis=0)[rbg_f]                 # (F,)
+            if slot >= fb.warmup_slots:
+                ru_used += int(used.sum())
+                ru_all += used.size
+
         # 2. interference covariance and whitening, per UT and frequency
-        if fb.mu_mimo:
+        if ftp:
+            # CSI: every UT at the periodic occasions (FTP model 1: the UTs in
+            # the system) and FTP model 1's new UTs; channels for those and
+            # the UTs decoded in this slot
+            csi_now = slot % fb.csi_period_slots == 0
+            if ftp1:
+                rep_ues = np.unique(np.concatenate(
+                    [np.flatnonzero(active) if csi_now else np.zeros(0, int),
+                     np.array(acsi, int)]))
+            else:
+                rep_ues = np.arange(n_ue) if csi_now else np.zeros(0, int)
+            need_ue = np.unique(np.concatenate(
+                [rep_ues, np.array([tb["ue"] for tb in txs], int)]))
+            blk = slot // fb.channel_update_slots * fb.channel_update_slots
+            stale = need_ue[h_block[need_ue] != blk]
+            if stale.size:
+                h_all[stale] = channels_for(blk * t_slot, stale)
+                h_block[stale] = blk
+            if need_ue.size:
+                gi = h_all[need_ue, 1:] @ w_cell[cells[need_ue, 1:]]    # (n, K, F, Ua, 4)
+                x = np.moveaxis(gi, 1, 3).reshape(need_ue.size, n_f, n_u, -1)
+                noise = 1.0 + rest[need_ue, None] * util_f[None, :]     # (n, F)
+                r_cov = (x @ np.conj(np.swapaxes(x, -1, -2))
+                         + noise[:, :, None, None] * np.eye(n_u))
+                hw_all[need_ue] = whitening(r_cov.astype(np.complex128)) @ h_all[need_ue, 0]
+            hw = hw_all
+        elif fb.mu_mimo:
             # one interferer at a time: w_cell[cells] with 8 layers would
             # copy ~1.3 GB for the default system
             r_cov = np.broadcast_to((1.0 + rest)[:, None, None, None] * np.eye(n_u),
@@ -504,8 +799,9 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
             x = np.moveaxis(gi, 1, 3).reshape(n_ue, n_f, n_u, -1)   # (U, F, Ua, 4K)
             r_cov = (x @ np.conj(np.swapaxes(x, -1, -2))
                      + (1.0 + rest)[:, None, None, None] * np.eye(n_u))
-        lw = whitening(r_cov.astype(np.complex128))       # (U, F, Ua, Ua)
-        hw = lw @ h[:, 0]                                 # (U, F, Ua, S)
+        if not ftp:
+            lw = whitening(r_cov.astype(np.complex128))   # (U, F, Ua, Ua)
+            hw = lw @ h[:, 0]                             # (U, F, Ua, S)
 
         # 3. decode
         tx_sinr = {}                  # per-layer SINR of each multi-codeword transmission
@@ -565,7 +861,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                     (la_mu if tb.get("mu") else la).update(u, ok, cw=cw, tx_rank=tb["rank"])
                 if slot >= fb.warmup_slots:
                     n_mu_first += int(bool(tb.get("mu")))
-                pf_avg[u] += tb["bits"] / fb.pf_window_slots
+                pf_avg[u] += tb.get("payload", tb["bits"]) / fb.pf_window_slots
                 if slot >= fb.warmup_slots:
                     n_first += 1
                     n_nack += int(not ok)
@@ -577,27 +873,53 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                     mcs_log.append(tb["info"].index)
             if ok:
                 if slot >= fb.warmup_slots:
-                    bits[u] += tb["bits"]
+                    bits[u] += tb.get("payload", tb["bits"])
+                if ftp:
+                    for f, m in tb["seg"]:
+                        f["left"] -= m
+                        if f["left"] == 0:            # last bits delivered
+                            files[u] = [g for g in files[u] if g is not f]
+                            if f["counted"]:
+                                upt.append(size_bits / ((slot + 1) * t_slot - f["t"]))
+                                upt_ue.append(u)
+                                upt_t.append(f["t"])
+                            if ftp1 and not files[u]:     # the UT leaves
+                                active[u] = False
+                                current[u], pending[u] = None, []
+                                harq = [t for t in harq if t["ue"] != u]
+            elif ftp1 and not active[u]:
+                pass                      # a departed UT's padding: not resent
             elif tb["ntx"] < fb.harq_max_tx:
                 tb["due"] = slot + fb.harq_rtt_slots
                 harq.append(tb)
+            elif ftp:                     # dropped: its data goes back (RLC ARQ)
+                for f, m in tb["seg"]:
+                    f["unsched"] += m
+                unsched[u] += tb["payload"]
         pf_avg *= 1 - 1 / fb.pf_window_slots
 
         # 4. CSI reports
-        if slot % fb.csi_period_slots == 0:
-            for u in range(n_ue):
-                rep = proc.select(hw[u], rbg_f, fb.rb_step, slot)
-                bits_log.append(rep.pmi_bits)
-                if max_cw == 1:
-                    sinr_sb = la.cqi_sinr_db(rep.cqi_sb, rep.rank, fb.rbg_size)
-                else:                                     # (n_cw, n_rbg)
-                    sinr_sb = np.array([la.cqi_sinr_db(q, len(g), fb.rbg_size)
-                                        for q, g in zip(rep.cqi_cw_sb, rep.groups)])
-                vec = _report_vectors(rep, n_rbg, first_f) if fb.mu_mimo else None
-                pending[u].append((slot + fb.csi_delay_slots, rep, sinr_sb, vec))
+        if ftp1:
+            report, acsi = rep_ues, []
+        else:
+            report = range(n_ue) if slot % fb.csi_period_slots == 0 else ()
+        for u in report:
+            rep = proc.select(hw[u], rbg_f, fb.rb_step, slot,
+                              la.offset_table(u) if fb.ri_olla else None)
+            bits_log.append(rep.pmi_bits)
+            if max_cw == 1:
+                sinr_sb = la.cqi_sinr_db(rep.cqi_sb, rep.rank, fb.rbg_size)
+            else:                                         # (n_cw, n_rbg)
+                sinr_sb = np.array([la.cqi_sinr_db(q, len(g), fb.rbg_size)
+                                    for q, g in zip(rep.cqi_cw_sb, rep.groups)])
+            vec = _report_vectors(rep, n_rbg, first_f) if fb.mu_mimo else None
+            pending[u].append((slot + fb.csi_delay_slots, rep, sinr_sb, vec))
 
     t_meas = (fb.n_slots - fb.warmup_slots) * t_slot
     bw = cfg.channel_bandwidth_hz or n_rb * 12 * scs
+    if ftp:
+        still = [(size_bits / (t_end - f["t"]), u, f["t"]) for u in range(n_ue)
+                 for f in files[u] if f["counted"]]
     tput = bits / t_meas
     return FullBufferResult(
         ue_throughput_bps=tput, ue_se=tput / bw,
@@ -613,11 +935,23 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                              else float(np.mean(rank_log)) if rank_log else 0.0),
         mu_tb_fraction=n_mu_first / max(n_first, 1),
         retx_rbg_fraction=diag["retx_rbg"] / max(diag["rbg"], 1),
+        retx_moved_fraction=diag["retx_moved"] / max(diag["retx_units"], 1),
         mu_sinr_error_db=float(np.mean(diag["err"])) if diag["err"] else 0.0,
         mean_codewords=float(np.mean(ncw_log)) if ncw_log else 0.0,
         rank_hist=tuple(float(np.mean(np.array(rank_log) == r)) if rank_log else 0.0
                         for r in range(1, 5)),
-        bler_first_cw=tuple(float(n / f) for n, f in zip(cw_nack, cw_first) if f))
+        bler_first_cw=tuple(float(n / f) for n, f in zip(cw_nack, cw_first) if f),
+        resource_utilization=ru_used / max(ru_all, 1) if ftp else 1.0,
+        file_upt_bps=np.array(upt) if ftp else np.zeros(0),
+        file_ue=np.array(upt_ue, int) if ftp else np.zeros(0, int),
+        files_counted=files_counted if ftp else 0,
+        file_upt_open_bps=np.array([x for x, _, _ in still]) if ftp else np.zeros(0),
+        file_ue_open=np.array([u for _, u, _ in still], int) if ftp else np.zeros(0, int),
+        file_arrival_s=np.array(upt_t) if ftp else np.zeros(0),
+        file_arrival_open_s=np.array([t for _, _, t in still]) if ftp else np.zeros(0),
+        mean_active_ues=(n_with_data / max(fb.n_slots - fb.warmup_slots, 1) / lay.n_cells
+                         if ftp else 0.0),
+        arrivals_blocked=n_blocked if ftp else 0)
 
 
 def _fb_worker(args):
@@ -652,6 +986,7 @@ def aggregate_drops(res: list) -> dict:
         "mean_layers_per_rbg": float(np.mean([r.mean_layers_per_rbg for r in res])),
         "mu_tb_fraction": float(np.mean([r.mu_tb_fraction for r in res])),
         "retx_rbg_fraction": float(np.mean([r.retx_rbg_fraction for r in res])),
+        "retx_moved_fraction": float(np.mean([r.retx_moved_fraction for r in res])),
         "mu_sinr_error_db": float(np.mean([r.mu_sinr_error_db for r in res])),
         "mean_codewords": float(np.mean([r.mean_codewords for r in res])),
         "rank_hist": np.mean([r.rank_hist for r in res], axis=0).tolist(),

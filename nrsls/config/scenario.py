@@ -152,6 +152,12 @@ class ScenarioConfig:
     # eq. 8.1-1, as in the RP-180524 calibration); 'los': BS gain toward the
     # LOS direction only (phase-1 model)
     coupling_model: str = "multipath"
+    # analog-beam calibration (RP-180524 Dense Urban config A): LCS (zenith,
+    # azimuth) beam directions in degrees.  Each TXRU is a K x L sub-array
+    # (bs_antenna M/Mp x N/Np) with 2-D DFT weights; the serving cell uses
+    # the beam with the highest RSRP, every other cell a random beam per UT.
+    # Large-scale calibration only (coupling gain and geometry).
+    calib_beams: tuple = ()
 
     # --- antennas ---
     bs_antenna: BSAntennaConfig = field(default_factory=BSAntennaConfig)
@@ -165,6 +171,8 @@ class ScenarioConfig:
             raise ValueError(f"unknown O2I model {self.o2i_model!r}")
         if self.coupling_model not in ("multipath", "los"):
             raise ValueError(f"unknown coupling model {self.coupling_model!r}")
+        if self.calib_beams and self.coupling_model != "multipath":
+            raise ValueError("calib_beams needs coupling_model='multipath'")
         if self.o2i_model == "legacy" and self.family not in ("uma", "umi"):
             raise ValueError("the legacy O2I model covers UMa and UMi only")
 
@@ -332,8 +340,8 @@ def rp180524(env: str, channel_model_a_o2i: str = "legacy",
     model A (default: the TR 38.901 Table 7.4.3-3 legacy model for UMa,
     low-loss for RMa, which has no legacy variant in nrsls).
 
-    Dense Urban config A and Indoor Hotspot need the analog-beam attachment
-    and are not covered yet.
+    Dense Urban config A (analog beams) is :func:`rp180524_du`, Indoor
+    Hotspot config A :func:`rp180524_inh`.
     """
     env = env.lower()
     tilt = {"rural-700m": 100.0, "rural-4g": 100.0, "rural-lmlc": 96.0,
@@ -367,6 +375,38 @@ def rp180524(env: str, channel_model_a_o2i: str = "legacy",
     return replace(cfg, name=f"RP-180524 {env}", **overrides)
 
 
+# RP-180524 Table 2, Dense Urban config A: TRxP beam set in the LCS
+DU_A_CALIB_BEAMS = tuple((zen, az) for zen in (112.5, 157.5)
+                         for az in (-56.25, -33.75, -11.25, 11.25, 33.75, 56.25))
+
+
+def rp180524_du(channel_model_a_o2i: str = "legacy", **overrides) -> ScenarioConfig:
+    """RP-180524 Table 2, Dense Urban - eMBB config A (4 GHz) calibration.
+
+    19 sites x 3 TRxPs (30 / 150 / 270 deg), ISD 200 m, BS at 25 m,
+    mechanically horizontal, 41 dBm in 10 MHz, UE NF 7 dB, 10 UEs per TRxP,
+    80 % indoor (floors as in TR 38.901), 20 % outdoor in car, d2D_min 10 m,
+    wrap-around.  128 elements (8, 8, 2), dH = 0.5, dV = 0.8 lambda, 4 TXRUs
+    (Mp, Np, P) = (2, 1, 2): each TXRU is a 4 x 8 co-polarised sub-array with
+    2-D DFT analog weights.  Attachment on port-0 RSRP with the best of 12
+    beams (zenith 5pi/8, 7pi/8; azimuth +-pi/16, +-3pi/16, +-5pi/16 in the
+    LCS); interfering TRxPs use random beams.  UEs (1, 2, 2), 0 / 90 deg.
+
+    As for the other RP-180524 configs, the high/low-loss building mix
+    "applies to channel model B"; channel model A uses
+    ``channel_model_a_o2i`` (default: the TR 38.901 legacy model).
+    """
+    ant = BSAntennaConfig(M=8, N=8, P=2, Mp=2, Np=1, dV=0.8, dH=0.5,
+                          electrical_tilt_deg=90.0, mechanical_downtilt_deg=0.0)
+    cfg = uma(name="RP-180524 du-4g", isd_m=200.0, carrier_freq_hz=4e9,
+              carrier=CarrierConfig(mu=0, n_size_grid=52), noise_bandwidth_hz=10e6,
+              bs_tx_power_dbm=41.0, ue_noise_figure_db=7.0, min_d2d_m=10.0,
+              indoor_ratio=0.8, in_car_ratio=1.0, o2i_model=channel_model_a_o2i,
+              o2i_high_loss_ratio=0.2, bs_antenna=ant,
+              ue_antenna=UEAntenna(M=1, N=2, P=2), calib_beams=DU_A_CALIB_BEAMS)
+    return replace(cfg, **overrides)
+
+
 def rp180524_inh(trxp_per_site: int = 1, **overrides) -> ScenarioConfig:
     """RP-180524 Table 1, Indoor Hotspot config A (4 GHz), 12 or 36 TRxP.
 
@@ -398,11 +438,17 @@ def dense_urban_a(**overrides) -> ScenarioConfig:
 
     19 sites x 3 TRxPs, ISD 200 m, BS at 25 m, 4 GHz, 41 dBm per 10 MHz,
     15 kHz SCS (52 PRB), BS element 8 dBi, UE NF 7 dB, 10 UTs per TRxP:
-    80 % indoor (20 % high-loss / 80 % low-loss buildings, 3 km/h), 20 %
-    outdoor in cars (30 km/h).  gNB 32T: (M, N, P, Mg, Ng; Mp, Np) =
-    (8, 8, 2, 1, 1; 2, 8); UT 4 ports (1, 2, 2).  Channel model A: the
-    TR 38.901 UMa model (matches the RP-180524 UMa calibration).
-    Spectral efficiency is normalised by the 10 MHz channel bandwidth.
+    80 % indoor (3 km/h), 20 % outdoor in cars (30 km/h, N(9, 5) dB car
+    loss).  gNB 32T: (M, N, P, Mg, Ng; Mp, Np) = (8, 8, 2, 1, 1; 2, 8); UT
+    4 ports (1, 2, 2).  Channel model A: the TR 38.901 UMa model, with the
+    M.2412 Table A1-7 building loss for model A at <= 6 GHz, 20 dB +
+    0.5 d2D-in (the 'legacy' model; the 20 % high / 80 % low-loss mix of
+    M.2412 Table 5b belongs to model B).  Both match the RP-180524
+    calibration (docs/benchmark-suite.md).  Spectral efficiency is
+    normalised by the 10 MHz channel bandwidth.
+
+    Until 2026-11-03 this preset used the 20 / 80 high / low-loss mix; the
+    CW2L studies were run with it and pin it with ``DU_A_MIXED_O2I``.
     """
     ant = BSAntennaConfig(M=8, N=8, P=2, Mp=2, Np=8, dV=0.5, dH=0.5,
                           electrical_tilt_deg=102.0)
@@ -411,12 +457,20 @@ def dense_urban_a(**overrides) -> ScenarioConfig:
               noise_bandwidth_hz=None, channel_bandwidth_hz=10e6,
               bs_tx_power_dbm=41.0, ue_noise_figure_db=7.0, min_d2d_m=10.0,
               indoor_ratio=0.8, in_car_ratio=1.0, ue_speed_kmh=3.0,
-              in_car_speed_kmh=30.0, o2i_model="mixed", o2i_high_loss_ratio=0.2,
+              in_car_speed_kmh=30.0, o2i_model="legacy",
               bs_antenna=ant, ue_antenna=UEAntenna(M=1, N=2, P=2))
     return replace(cfg, **overrides)
 
 
+# The building mix du-a used before 2026-11-03 (M.2412 channel model B: 20 %
+# high-loss / 80 % low-loss).  The CW2L studies (docs/cw2lm-*.md) were run
+# with it; their scripts pass these overrides so that the committed results
+# stay reproducible.  Drop them to rerun a study with the model-A loss.
+DU_A_MIXED_O2I = {"o2i_model": "mixed", "o2i_high_loss_ratio": 0.2}
+
+
 PRESETS["du-a"] = dense_urban_a
+PRESETS["rp-du-4g"] = rp180524_du
 PRESETS["rp-inh-12trxp"] = lambda **kw: rp180524_inh(1, **kw)
 PRESETS["rp-inh-36trxp"] = lambda **kw: rp180524_inh(3, **kw)
 

@@ -13,6 +13,10 @@ sub-array gain) at the ray's departure angles and F_rx,u the field of UT
 port u at its arrival angles; the LOS ray uses [[1, 0], [0, -1]].  The array
 phases drop out because each port is a single (virtual) antenna.  UT ports
 are isotropic with 0 / 90 deg polarisation (P = 2) or 0 deg (P = 1).
+
+With analog beams (:func:`multipath_beam_gains`) the TXRU is a 2-D
+sub-array whose array factor depends on the ray direction; it is a real
+power factor per ray, shared by both polarisations, so it multiplies g_nm.
 """
 
 from __future__ import annotations
@@ -29,12 +33,9 @@ def _ue_power(v_t, v_p, ue_pol: int):
     return np.abs(v_t) ** 2
 
 
-def multipath_gain(cl: Clusters, port_field, ue_pol: int) -> np.ndarray:
-    """Linear port-0 gain (antenna + multipath, no pathloss) per link, (L,).
-
-    ``port_field(az, zen) -> (F_theta, F_phi)`` evaluates the BS port field
-    at GCS departure angles of any shape.
-    """
+def _ray_gains(cl: Clusters, port_field, ue_pol: int):
+    """Polarised per-ray gain g_nm (L, N, M) and LOS-ray gain (L,) of one BS
+    port field, before the cluster powers and the K-factor are applied."""
     ft, fp = port_field(cl.aod, cl.zod)                       # (L, N, M), real
     ft, fp = np.real(ft), np.real(fp)
     ik = 1.0 / cl.kappa
@@ -46,8 +47,37 @@ def multipath_gain(cl: Clusters, port_field, ue_pol: int) -> np.ndarray:
         g = 0.5 * (g_t + g_p)
     else:
         g = g_t
-    nlos = np.sum(cl.power[..., None] * g, axis=(1, 2)) / N_RAYS
     lt, lp = port_field(cl.los_aod, cl.los_zod)
-    g_los = _ue_power(lt, -lp, ue_pol)
+    return g, _ue_power(lt, -lp, ue_pol)
+
+
+def multipath_gain(cl: Clusters, port_field, ue_pol: int) -> np.ndarray:
+    """Linear port-0 gain (antenna + multipath, no pathloss) per link, (L,).
+
+    ``port_field(az, zen) -> (F_theta, F_phi)`` evaluates the BS port field
+    at GCS departure angles of any shape.
+    """
+    g, g_los = _ray_gains(cl, port_field, ue_pol)
+    nlos = np.sum(cl.power[..., None] * g, axis=(1, 2)) / N_RAYS
     k = cl.k_r
     return nlos / (k + 1) + g_los * k / (k + 1)
+
+
+def multipath_beam_gains(cl: Clusters, element_field, ue_pol: int,
+                         beam_power) -> np.ndarray:
+    """Linear port gains of B analog beams per link, (B, L).
+
+    The beams share one element field and differ in the sub-array weights,
+    so beam b scales every ray by its real array-factor power |AF_b|^2:
+    ``element_field(az, zen) -> (F_theta, F_phi)`` is the field of one
+    element and ``beam_power(az, zen) -> (B, ...)`` gives |AF_b|^2 at the
+    departure angles.  Used by the analog-beam calibration of RP-180524
+    (Dense Urban config A), where the TXRU sub-array is steered to the best
+    of a set of 2-D DFT beams.
+    """
+    g, g_los = _ray_gains(cl, element_field, ue_pol)
+    w = beam_power(cl.aod, cl.zod)                            # (B, L, N, M)
+    nlos = np.einsum("ln,blnm,lnm->bl", cl.power, w, g) / N_RAYS
+    w_los = beam_power(cl.los_aod, cl.los_zod)                # (B, L)
+    k = cl.k_r
+    return nlos / (k + 1) + w_los * g_los * k / (k + 1)

@@ -105,10 +105,14 @@ effects of eq. (8.1-1) closed that gap:
    5 dBi). The 12-TRxP TRPs point at the floor; the 36-TRxP ones are
    3-sector with a 20° downtilt. See `rp180524_inh()` and
    `ScenarioConfig.itu_model_a`.
-3. **Not covered (by choice):** Dense Urban config A and the 30/70 GHz
-   Indoor Hotspot configs use analog-beam sets (hybrid beamforming). The
-   target 32T4R system is fully digital, so these are left for a later
-   hybrid/FR2 extension. Their reference data is in `refs/rp180524/`.
+3. **Dense Urban config A: closed** by the benchmark suite
+   ([benchmark-suite.md](benchmark-suite.md)). Its analog-beam calibration
+   is emulated with `ScenarioConfig.calib_beams` (preset `rp-du-4g`): best
+   of 12 DFT beams for the serving TRxP, random beams for the interferers.
+   Coupling gain ranks 2nd and geometry 10th of 17 participants. **Not
+   covered (by choice):** the 30/70 GHz Indoor Hotspot and 30 GHz Dense
+   Urban configs (FR2, hybrid beamforming); their reference data is in
+   `refs/rp180524/`.
 4. **Runtime.** A multipath drop takes ~3 s (57 cells × 570 UTs, all
    links). Phase 3 only needs full channel matrices for the serving cell +
    K strongest interferers.

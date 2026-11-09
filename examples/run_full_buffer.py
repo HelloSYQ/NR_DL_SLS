@@ -64,9 +64,29 @@ def main():
                     help="re-precode retransmissions with the current report")
     ap.add_argument("--receiver", default="irc", choices=["irc", "sic"],
                     help="SU receiver: MMSE-IRC or codeword-level MMSE-SIC")
+    ap.add_argument("--harq-refill", default="fresh", choices=("fresh", "always"),
+                    help="multi-codeword retransmissions: refill decoded codewords only "
+                         "with fresh CSI (and data), or always")
+    ap.add_argument("--harq-mode", default="sync", choices=("sync", "async"),
+                    help="SU retransmissions: one round trip later on their own RBGs "
+                         "(sync), or with priority on the best free RBGs (async)")
+    ap.add_argument("--ri-olla", action="store_true",
+                    help="RI metric on OLLA-corrected CQIs (use with --olla-per-rank)")
+    ap.add_argument("--ri-sic-propagation", action="store_true",
+                    help="SIC: RI weights codeword k by (1 - target BLER)^k")
     ap.add_argument("--olla-sic-conditional", action="store_true",
                     help="SIC: a codeword's OLLA skips transmissions whose earlier "
                          "codeword failed")
+    ap.add_argument("--olla-fast-gain", type=float, default=1.0,
+                    help="OLLA fast start: step multiplier for a loop's first ACK/NACKs")
+    ap.add_argument("--olla-fast-samples", type=int, default=0,
+                    help="OLLA fast start: how many ACK/NACKs per loop (0: off)")
+    ap.add_argument("--olla-fast-min-cw", type=int, default=0,
+                    help="OLLA fast start: first codeword index it applies to "
+                         "(1: all but the strongest-layer codeword)")
+    ap.add_argument("--olla-warm-samples", type=int, default=0,
+                    help="OLLA warm start (FTP model 1): a new UT's loops start from "
+                         "the mean of the loops with at least this many ACK/NACKs (0: off)")
     ap.add_argument("--ideal-la", action="store_true",
                     help="reference: MCS from the SINR each new TB actually gets")
     args = ap.parse_args()
@@ -88,7 +108,14 @@ def main():
                               olla_per_rank=args.olla_per_rank,
                               harq_adaptive=args.harq_adaptive,
                               receiver=args.receiver, ideal_la=args.ideal_la,
-                              olla_sic_conditional=args.olla_sic_conditional)
+                              olla_sic_conditional=args.olla_sic_conditional,
+                              harq_refill=args.harq_refill, ri_olla=args.ri_olla,
+                              ri_sic_propagation=args.ri_sic_propagation,
+                              olla_fast_gain=args.olla_fast_gain,
+                              olla_fast_samples=args.olla_fast_samples,
+                              olla_fast_min_cw=args.olla_fast_min_cw,
+                              olla_warm_samples=args.olla_warm_samples,
+                              harq_mode=args.harq_mode)
         t0 = time.time()
         r = run_full_buffer(cfg, fb, args.drops, seed=1, n_jobs=args.jobs)
         ue_se[cb] = r["ue_se"]
@@ -116,7 +143,12 @@ def main():
             "overhead_re_per_prb": args.overhead_re, "cw_mapping": args.cw_mapping,
             "olla_per_rank": args.olla_per_rank, "harq_adaptive": args.harq_adaptive,
             "receiver": args.receiver, "ideal_la": args.ideal_la,
-            "olla_sic_conditional": args.olla_sic_conditional}
+            "olla_sic_conditional": args.olla_sic_conditional,
+            "harq_refill": args.harq_refill, "ri_olla": args.ri_olla,
+            "ri_sic_propagation": args.ri_sic_propagation,
+            "olla_fast_gain": args.olla_fast_gain, "olla_fast_samples": args.olla_fast_samples,
+            "olla_fast_min_cw": args.olla_fast_min_cw,
+            "olla_warm_samples": args.olla_warm_samples, "harq_mode": args.harq_mode}
     with open(os.path.join(OUT, f"{args.tag}_full_buffer.json"), "w") as f:
         json.dump({"config": meta, "results": summary,
                    "ue_se": {k: [round(float(x), 5) for x in v] for k, v in ue_se.items()}},
