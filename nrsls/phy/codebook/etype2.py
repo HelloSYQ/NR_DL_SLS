@@ -120,19 +120,27 @@ class ETypeIICodebook:
         coeff = 7 * max(k_nz - rank, 0)                        # 3 + 4 bits each
         return part1 + sd + fd + per_layer + coeff
 
-    def derive(self, hw, subband_of_f, rank):
-        """Quantised eType-II precoders (N3, S, rank) from whitened channels
-        hw (F, U, S); returns (W, number of non-zero coefficients)."""
-        n12 = self.n1 * self.n2
-        l, m_v, k0 = self.params(rank)
-        # 1. dominant eigenvectors per PMI sub-band (batched)
+    def eig(self, hw, subband_of_f):
+        """Eigenvectors (N3, S, S), ascending, of each PMI sub-band's
+        covariance of the whitened channels hw (F, U, S); shared by every
+        rank of one report."""
         cov_f = np.einsum("fus,fut->fst", np.conj(hw), hw)            # (F, S, S)
         onehot = (subband_of_f[None, :] == np.arange(self.n3)[:, None]).astype(float)
         cov = np.tensordot(onehot, cov_f, axes=(1, 0))               # (N3, S, S)
         empty = onehot.sum(axis=1) == 0
         if empty.any():
             cov[empty] = cov_f.sum(axis=0)
-        _, vec = np.linalg.eigh(cov)
+        return np.linalg.eigh(cov)[1]
+
+    def derive(self, hw, subband_of_f, rank, vec=None):
+        """Quantised eType-II precoders (N3, S, rank) from whitened channels
+        hw (F, U, S); returns (W, number of non-zero coefficients).  ``vec``:
+        the sub-band eigenvectors of :meth:`eig`, if already computed."""
+        n12 = self.n1 * self.n2
+        l, m_v, k0 = self.params(rank)
+        # 1. dominant eigenvectors per PMI sub-band (batched)
+        if vec is None:
+            vec = self.eig(hw, subband_of_f)
         e = vec[..., ::-1][..., :rank]                               # (N3, S, rank)
         ep = e.reshape(self.n3, 2, n12, rank)       # (t, pol, port, layer)
         # 2. SD basis: rotation and L strongest orthogonal beams, all

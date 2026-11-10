@@ -234,27 +234,39 @@ class CSIProcessor:
             out[..., grp] = mmse_sinr(g[..., grp[0]:])[..., :len(grp)]
         return out
 
-    def _precoder(self, hw, subband_of_f, rank):
-        """(w, pmi, per-layer SINR (F, r), PMI bits) of one rank, or None if
-        the codebook does not support the rank."""
-        bits = 0
+    def _eig(self, hw, subband_of_f):
+        """Eigenvectors (ascending) shared by every rank of one report: the
+        wideband covariance's ('svd'), each sub-band's ('svd_sb', 'etype2');
+        None for the other codebooks."""
         if self.codebook == "etype2":
-            if not self._et2.supports(rank):
-                return None
-            w, knz = self._et2.derive(hw, subband_of_f, rank)
-            return (w, (), self._layer_sinr(hw @ w[subband_of_f], rank),
-                    self._et2.payload_bits(rank, knz))
+            return self._et2.eig(hw, subband_of_f)
         if self.codebook == "svd":
             cov = np.einsum("fus,fut->st", np.conj(hw), hw)
-            _, vec = np.linalg.eigh(cov)
-            w = vec[:, ::-1][:, :rank] / np.sqrt(rank)
-            pmi = ()
-        elif self.codebook == "svd_sb":
+            return np.linalg.eigh(cov)[1]
+        if self.codebook == "svd_sb":
             n_sb = int(subband_of_f.max()) + 1
             onehot = (subband_of_f[None, :] == np.arange(n_sb)[:, None]).astype(float)
             cov_f = np.einsum("fus,fut->fst", np.conj(hw), hw)
             cov = np.tensordot(onehot, cov_f, axes=(1, 0))        # (N_sb, S, S)
-            _, vec = np.linalg.eigh(cov)
+            return np.linalg.eigh(cov)[1]
+        return None
+
+    def _precoder(self, hw, subband_of_f, rank, vec=None):
+        """(w, pmi, per-layer SINR (F, r), PMI bits) of one rank, or None if
+        the codebook does not support the rank; ``vec`` = :meth:`_eig`."""
+        bits = 0
+        if vec is None:
+            vec = self._eig(hw, subband_of_f)
+        if self.codebook == "etype2":
+            if not self._et2.supports(rank):
+                return None
+            w, knz = self._et2.derive(hw, subband_of_f, rank, vec)
+            return (w, (), self._layer_sinr(hw @ w[subband_of_f], rank),
+                    self._et2.payload_bits(rank, knz))
+        if self.codebook == "svd":
+            w = vec[:, ::-1][:, :rank] / np.sqrt(rank)
+            pmi = ()
+        elif self.codebook == "svd_sb":
             w = vec[..., ::-1][..., :rank] / np.sqrt(rank)        # (N_sb, S, r)
             pmi = ()
         elif self.codebook == "svd_rb":
@@ -279,8 +291,9 @@ class CSIProcessor:
             self._et2 = ETypeIICodebook(self.n1, self.n2, self.o1, self.o2,
                                         self.etype2_combo,
                                         int(subband_of_f.max()) + 1)
+        vec = self._eig(hw, subband_of_f)          # shared by every rank
         for rank in range(1, min(self.max_rank, hw.shape[1]) + 1):
-            p = self._precoder(hw, subband_of_f, rank)
+            p = self._precoder(hw, subband_of_f, rank, vec)
             if p is None:
                 continue
             w, pmi, sinr, bits = p
