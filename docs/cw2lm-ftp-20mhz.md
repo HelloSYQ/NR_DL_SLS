@@ -25,7 +25,7 @@ This repeats the FTP study of [cw2lm-ftp.md](cw2lm-ftp.md) with a different carr
 - **Limits:**
   - **95th percentile at 20 % RU:** it sits at the peak rate (about 250 Mbit/s) and swings with the share of files that reach it, so its gains there are not meaningful.
   - **Interference-limited layout:** in a noise-limited deployment the grip's power loss would weigh more.
-  - **Template:** the template copy still holds the no-grip set.
+  - **Template:** this copy still holds the no-grip set. The grip set is in `6GR_DL_CW2L_template_v003_20MHz_44dBm_grip.xlsx`, MMSE-IRC only: LTE style and one codeword per layer against NR.
 
 | | 10 MHz study ([cw2lm-ftp.md](cw2lm-ftp.md)) | This study (`--setup 20mhz`) |
 |---|---|---|

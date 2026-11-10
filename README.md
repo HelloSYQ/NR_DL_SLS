@@ -143,6 +143,9 @@ python examples/plot_cw2lm_ftp.py
 python examples/fill_cw2l_template.py results/cw2lm_ftp.json 6GR_DL_CW2L_template_v003.xlsx
 python examples/cw2lm_ftp_eval.py --setup 20mhz --summary-only --log "$(ls results/ftp20_parts/*.jsonl | paste -sd,)"
 python examples/fill_cw2l_template.py results/cw2lm_ftp_20mhz.json 6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx
+# FTP model 1 with the users' hand grip, MMSE-IRC only, in its own copy of the blank template
+git show b56a456:6GR_DL_CW2L_template_v003.xlsx > 6GR_DL_CW2L_template_v003_20MHz_44dBm_grip.xlsx
+python examples/fill_cw2l_template_ftp1.py results/cw2lm_ftp1_grip_20mhz.json 6GR_DL_CW2L_template_v003_20MHz_44dBm_grip.xlsx --columns D
 
 # benchmark against the other companies (tier 1 ~3 min; --e2e reruns tier 2)
 python examples/benchmark.py

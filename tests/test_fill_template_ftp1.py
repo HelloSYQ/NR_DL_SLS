@@ -150,3 +150,47 @@ def test_write_cells_empty_cell_keeps_or_takes_the_style(tmp_path):
     assert ws["D3"].value is None and ws["D3"].font.bold          # value gone, style kept
     assert ws["E3"].value == "x"
     assert ws["F3"].value is None and ws["F3"].border.left.style == "thin"   # E3's style
+
+
+def _label_row(ws, start):
+    return next(r for r in range(3, 40) if ftp1._text(ws.cell(r, 1).value).startswith(start))
+
+
+def test_grip_summary_switches_the_blockage_texts(book, tmp_path):
+    # without the grip the UE blockage row says so
+    write_cells(book, ftp1.plan(summary(), book))
+    ws = openpyxl.load_workbook(book)[ftp1.SHEET]
+    assert ws[f"D{_label_row(ws, 'UE blockage')}"].value == "Not modelled"
+    # the grip set-up fills the same cells with the grip's texts
+    grip = dict(summary(), setup="20mhz-ftp1-grip")
+    ftp1.check(grip)
+    write_cells(book, ftp1.plan(grip, book))
+    ws = openpyxl.load_workbook(book)[ftp1.SHEET]
+    for col in "DEF":
+        blockage = ws[f"{col}{_label_row(ws, 'UE blockage')}"].value
+        assert "Self-blocking" in blockage and "7.6.4.1" in blockage and "30 dB" in blockage
+        assert "cw2lm_ftp1_grip_20mhz.md" in ws[f"{col}{_label_row(ws, 'Source Tdoc')}"].value
+        assert ws[f"{col}{_label_row(ws, 'Traffic model')}"].value.endswith(
+            "with the UE blockage")
+        assert "without the UE blockage" in ws[f"{col}{_label_row(ws, 'Additional remarks')}"].value
+    # the results cells do not depend on the set-up
+    r = rows(ws)
+    key = ("Reciprocity based precoding", "Mean", "Alt2", "50%RU")
+    assert ws[f"E{r[key]}"].value == pytest.approx(
+        gain("svd_sb_20ms", "50", "sic-fix-warmfast", "lte", "upt_mean") / 100)
+
+
+def test_column_subset_fills_only_those_columns(book):
+    before = openpyxl.load_workbook(book)[ftp1.SHEET]
+    keep = {(r, c): before.cell(r, c).value for r in range(1, before.max_row + 1) for c in (5, 6)}
+    grip = dict(summary(), setup="20mhz-ftp1-grip")
+    ftp1.check(grip, ("D",))
+    write_cells(book, ftp1.plan(grip, book, ("D",)))
+    ws = openpyxl.load_workbook(book)[ftp1.SHEET]
+    assert ws["D2"].value == "nrsls, MMSE-IRC, with hand grip"
+    assert all(ws.cell(r, c).value == v for (r, c), v in keep.items())   # E, F untouched
+    r = rows(ws)
+    key = lambda alt: ("Other precoding scheme", "95th", alt, "70%RU")
+    assert ws[f"D{r[key('Alt1s')]}"].value == 0
+    assert ws[f"D{r[key('Alt3')]}"].value == pytest.approx(
+        gain("svd_20ms", "70", "irc-fix-warmfast", "per_layer", "upt_p95") / 100)

@@ -202,7 +202,9 @@ Mean UPT gain over NR [%], no grip → grip, at 20 / 50 / 70 % load:
   - **Absolute UPTs:** at 70 % load they are about 5 % optimistic.
   - **Gains:** dropping the first 100 ms of arrivals moves a mean gain by at most 1.2 points with the grip, and 0.9 without.
 - **Other deployments:** the result is for an interference-limited deployment. A noise-limited one, with larger distances, lower power or a higher carrier, would feel the grip's power loss.
-- **Template:** the 20 MHz template copy still holds the no-grip set.
+- **Template:** `6GR_DL_CW2L_template_v003_20MHz_44dBm_grip.xlsx` holds the grip set for the final presentation.
+  - **Contents:** MMSE-IRC only (column D): LTE style (Alt 2) and one codeword per layer (Alt 3) against NR (Alt 1, 0 %), at 20 / 50 / 70 % RU, for the mean, 5th- and 95th-percentile UPT, with sub-band SVD in the reciprocity rows and wideband SVD in the 'other precoding' rows.
+  - **Grip-free set:** the 20 MHz copy, `6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx`, still holds it.
 
 ## Code and reproduction
 
@@ -235,4 +237,14 @@ python examples/cw2lm_ftp_eval.py --setup 20mhz-ftp1-grip --summary-only --log "
 
 ```bash
 python examples/cw2lm_ftp1_grip_compare.py
+```
+
+The grip copy of the template starts from the blank template and is filled in column D only:
+
+```bash
+git show b56a456:6GR_DL_CW2L_template_v003.xlsx > 6GR_DL_CW2L_template_v003_20MHz_44dBm_grip.xlsx
+```
+
+```bash
+python examples/fill_cw2l_template_ftp1.py results/cw2lm_ftp1_grip_20mhz.json 6GR_DL_CW2L_template_v003_20MHz_44dBm_grip.xlsx --columns D
 ```
