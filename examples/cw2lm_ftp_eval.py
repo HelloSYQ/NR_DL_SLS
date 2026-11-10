@@ -138,7 +138,9 @@ def nr_reference(variant: str) -> str:
     return "irc-olla"
 
 
-CASES = {"etype2_20ms": "etype2", "svd_sb_20ms": "svd_sb", "svd_20ms": "svd"}
+CASES = {"etype2_20ms": "etype2", "svd_sb_20ms": "svd_sb", "svd_20ms": "svd",
+         # with a set-up whose CSI is ideal for every transmission ("csi" below)
+         "etype2_ideal": "etype2", "svd_sb_ideal": "svd_sb"}
 LOADS = ("20", "50", "70")
 FILE_BYTES = 0.5e6
 CSI_PERIOD_S, CSI_DELAY_S, CHANNEL_UPDATE_S = 20e-3, 4e-3, 2e-3
@@ -179,6 +181,15 @@ SETUPS = {
                             carrier="4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB)",
                             power="44 dBm per 20 MHz"),
 }
+# ideal CSI for every transmission, with the grip: a fresh RI / PMI / CQI
+# report every slot, usable in the next slot (no period, no delay), on a
+# channel refreshed every slot; "csi" = (period, delay, channel update) [s].
+# Cases etype2_ideal and svd_sb_ideal; rates recalibrated for NR with it
+SETUPS["20mhz-ftp1-grip-idealcsi"] = dict(
+    SETUPS["20mhz-ftp1-grip"], csi=(0.5e-3, 0.0, 0.5e-3),
+    cal_rates=(5.0, 8.0, 11.0, 14.0, 17.0, 20.0, 23.0),
+    rates=os.path.join(OUT, "cw2lm_ftp1_grip_idealcsi_rates_20mhz.json"),
+    out=os.path.join(OUT, "cw2lm_ftp1_grip_idealcsi_20mhz.json"))
 # controls for the grip, NR at the no-grip rates: the UT orientation alone (the
 # array turns, nothing is blocked: 0 dB) and the full grip
 SETUPS["20mhz-ftp1-orient"] = dict(
@@ -203,11 +214,13 @@ def _slots(setup: str, seconds: float) -> int:
 def fb_config(case: str, variant: str, scheme: str, rate: float, slots: int, warmup: int,
               drain: int, setup: str = DEFAULT_SETUP) -> FullBufferConfig:
     extra = VARIANTS[variant]
+    csi_period, csi_delay, ch_update = SETUPS[setup].get(
+        "csi", (CSI_PERIOD_S, CSI_DELAY_S, CHANNEL_UPDATE_S))
     return FullBufferConfig(
         n_slots=slots, warmup_slots=warmup, codebook=CASES[case], max_rank=4, rbg_size=4,
-        channel_update_slots=_slots(setup, CHANNEL_UPDATE_S),
-        csi_period_slots=_slots(setup, CSI_PERIOD_S),
-        csi_delay_slots=_slots(setup, CSI_DELAY_S), pdcch_symbols=2,
+        channel_update_slots=_slots(setup, ch_update),
+        csi_period_slots=_slots(setup, csi_period),
+        csi_delay_slots=_slots(setup, csi_delay), pdcch_symbols=2,
         overhead_re_per_prb=9, harq_adaptive=True, cw_mapping=scheme,
         ftp_file_bytes=FILE_BYTES, ftp_drain_slots=drain, **_traffic(setup, rate), **extra)
 
