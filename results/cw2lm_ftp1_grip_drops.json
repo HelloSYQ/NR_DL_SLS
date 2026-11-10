@@ -32,5 +32,42 @@
    "p50": 2.6859647076746196,
    "p95": 16.138141524739588
   }
+ },
+ "by_condition": {
+  "o2i": {
+   "ut_share": 0.802719298245614,
+   "cluster_blocked_share": 0.2698258555488118,
+   "power_lost_mean": 0.2881217717493879,
+   "power_lost_p50": 0.2360471487045288
+  },
+  "los": {
+   "ut_share": 0.156140350877193,
+   "cluster_blocked_share": 0.16945292435916073,
+   "power_lost_mean": 0.11734460968706463,
+   "power_lost_p50": 0.015271733018643041
+  },
+  "nlos": {
+   "ut_share": 0.041140350877192984,
+   "cluster_blocked_share": 0.17784097123482445,
+   "power_lost_mean": 0.18463380130073573,
+   "power_lost_p50": 0.15069305896759033
+  }
+ },
+ "by_mode": {
+  "portrait": {
+   "power_lost_mean": 0.23047397225599217,
+   "power_lost_p50": 0.1497875452041626
+  },
+  "landscape": {
+   "power_lost_mean": 0.2840745541724872,
+   "power_lost_p50": 0.20997664958191326
+  }
+ },
+ "los_ray": {
+  "blocked_all_los_links": 0.34728682170542635,
+  "blocked_no_grip_los_servers": 0.30623020063357975,
+  "reattached_when_blocked": 0.7931034482758621,
+  "blocked_grip_los_servers": 0.10842696629213483,
+  "zoa_p50_deg": 76.90059516814291
  }
 }

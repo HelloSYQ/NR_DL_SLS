@@ -34,8 +34,8 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 import cw2lm_ftp_eval as ev  # noqa: E402
 from nrsls.engine.drop import generate_drop  # noqa: E402
-from nrsls.propagation.blockage import LANDSCAPE, blocked_power_fraction  # noqa: E402
-from nrsls.propagation.pathloss import LOS  # noqa: E402
+from nrsls.propagation.blockage import LANDSCAPE, PORTRAIT, blocked_power_fraction  # noqa: E402
+from nrsls.propagation.pathloss import LOS, NLOS, O2I  # noqa: E402
 
 OUT = os.path.join(HERE, "..", "results")
 args = sys.argv[1:] + [None] * 3
@@ -55,16 +55,24 @@ ROWS = (("irc-fix-warmfast", "nr", "NR"), ("irc-fix-warmfast", "lte", "LTE"),
 KPI = ("upt_mean", "upt_p5", "upt_p95")
 
 
+COND = ((O2I, "o2i"), (LOS, "los"), (NLOS, "nlos"))
+
+
 def drop_stats(n_drops=10, seed=1) -> dict:
     """Grip effect on the drops of the evaluation (cached in DROP_STATS)."""
     if os.path.exists(DROP_STATS):
         with open(DROP_STATS) as fh:
-            return json.load(fh)
+            out = json.load(fh)
+        if "los_ray" in out:
+            return out
     base = ev.scenario("20mhz-ftp1")
     grip = ev.scenario("20mhz-ftp1-grip")
     assert dataclasses.replace(base, ue_self_blocking=True) == grip
     acc = {k: [] for k in ("loss_best", "loss_same", "lost_share", "moved", "geo0", "geo1",
                            "landscape", "cl_blocked", "los_blocked")}
+    by_cond = {name: {"n": 0, "cl": [0, 0], "lost": []} for _, name in COND}
+    by_mode = {PORTRAIT: [], LANDSCAPE: []}
+    los_all, los_zoa, los0, re0 = [0, 0], [], [0, 0], [0, 0]
     for d in range(n_drops):
         a = generate_drop(base, np.random.default_rng([seed, d]), keep_clusters=True)
         b = generate_drop(grip, np.random.default_rng([seed, d]), keep_clusters=True)
@@ -83,6 +91,30 @@ def drop_stats(n_drops=10, seed=1) -> dict:
             los = b.condition[s, u[m]] == LOS
             acc["los_blocked"].append([float(np.sum(cl.los_gain[u[m]][los] < 1)),
                                        float(los.sum())])
+            los_zoa += list(cl.los_zoa[u[m]][los])
+            lost = blocked_power_fraction(cl)[u[m]]
+            for c, name in COND:
+                k = b.condition[s, u[m]] == c
+                e = by_cond[name]
+                e["n"] += int(k.sum())
+                e["cl"][0] += int(np.sum((cl.gain[u[m]][k] < 1) & v[k]))
+                e["cl"][1] += int(v[k].sum())
+                e["lost"] += list(lost[k])
+            for md in by_mode:
+                by_mode[md] += list(lost[b.self_blocking.mode[u[m]] == md])
+        # the LOS ray on every LOS link, and on the no-grip serving links:
+        # blocked there, does the UT re-attach?
+        for s, cl in enumerate(b.clusters):
+            k = b.condition[s] == LOS
+            los_all[0] += int(np.sum(cl.los_gain[k] < 1))
+            los_all[1] += int(k.sum())
+        s0 = a.layout.cell_site[a.serving_cell]
+        k0 = a.condition[s0, u] == LOS
+        blk0 = np.array([b.clusters[x].los_gain[i] < 1 for x, i in zip(s0, u)])
+        los0[0] += int(np.sum(k0 & blk0))
+        los0[1] += int(k0.sum())
+        re0[0] += int(np.sum((a.serving_cell != b.serving_cell) & k0 & blk0))
+        re0[1] += int(np.sum(k0 & blk0))
         acc["moved"] += list(a.serving_cell != b.serving_cell)
         acc["geo0"] += list(a.geometry_db)
         acc["geo1"] += list(b.geometry_db)
@@ -105,7 +137,21 @@ def drop_stats(n_drops=10, seed=1) -> dict:
            "geometry_db": {"no_grip": {"mean": float(g0.mean()), "p5": pct(g0, 5),
                                        "p50": pct(g0, 50), "p95": pct(g0, 95)},
                            "grip": {"mean": float(g1.mean()), "p5": pct(g1, 5),
-                                    "p50": pct(g1, 50), "p95": pct(g1, 95)}}}
+                                    "p50": pct(g1, 50), "p95": pct(g1, 95)}},
+           # serving link after the grip, by its condition and by the grip mode
+           "by_condition": {name: {"ut_share": e["n"] / lb.size,
+                                   "cluster_blocked_share": e["cl"][0] / max(e["cl"][1], 1),
+                                   "power_lost_mean": float(np.mean(e["lost"])),
+                                   "power_lost_p50": float(np.median(e["lost"]))}
+                            for name, e in by_cond.items() if e["n"]},
+           "by_mode": {name: {"power_lost_mean": float(np.mean(by_mode[md])),
+                              "power_lost_p50": float(np.median(by_mode[md]))}
+                       for md, name in ((PORTRAIT, "portrait"), (LANDSCAPE, "landscape"))},
+           "los_ray": {"blocked_all_los_links": los_all[0] / los_all[1],
+                       "blocked_no_grip_los_servers": los0[0] / los0[1],
+                       "reattached_when_blocked": re0[0] / max(re0[1], 1),
+                       "blocked_grip_los_servers": float(lo[0] / lo[1]) if lo[1] else None,
+                       "zoa_p50_deg": float(np.median(los_zoa))}}
     with open(DROP_STATS, "w") as fh:
         json.dump(out, fh, indent=1)
     return out
@@ -143,17 +189,34 @@ def main():
          f"| Serving-link clusters blocked | {100 * ds['serving_cluster_blocked_share']:.0f} % |",
          f"| Serving-link multipath power lost (mean share) | "
          f"{100 * ds['serving_power_lost_share_mean']:.0f} % |",
-         f"| LOS ray blocked (LOS serving links, {ds['los_links']}) | "
-         + (f"{100 * ds['los_ray_blocked_share']:.0f} % |" if ds["los_ray_blocked_share"] is not None
-            else "— |"),
          f"| Loss toward the former serving cell [dB]: mean / median / p90 / max | "
          f"{n(sl['mean'])} / {n(sl['p50'])} / {n(sl['p90'])} / {n(sl['max'])} |",
          f"| Loss of the strongest cell after re-attachment [dB]: mean / median / p90 / max | "
          f"{n(bl['mean'])} / {n(bl['p50'])} / {n(bl['p90'])} / {n(bl['max'])} |",
          f"| UTs that change serving cell | {100 * ds['serving_cell_changed_share']:.0f} % |",
+         f"| LOS ray blocked: all LOS links / LOS links that served before the grip "
+         f"(of those UTs, share that re-attach) / LOS serving links after it | "
+         f"{100 * ds['los_ray']['blocked_all_los_links']:.0f} % / "
+         f"{100 * ds['los_ray']['blocked_no_grip_los_servers']:.0f} % "
+         f"({100 * ds['los_ray']['reattached_when_blocked']:.0f} %) / "
+         f"{100 * ds['los_ray']['blocked_grip_los_servers']:.0f} % |",
+         f"| LOS serving links: median arrival zenith of the LOS ray | "
+         f"{ds['los_ray']['zoa_p50_deg']:.0f}° |",
          f"| Geometry (full-load SINR) [dB], mean / p5 / p50 / p95: no grip → grip | "
          f"{n(g0['mean'])} / {n(g0['p5'])} / {n(g0['p50'])} / {n(g0['p95'])} → "
          f"{n(g1['mean'])} / {n(g1['p5'])} / {n(g1['p50'])} / {n(g1['p95'])} |", "",
+         "Serving link after the grip, by its condition and by the grip mode:", "",
+         "| Serving link | UTs | Clusters blocked | Multipath power lost, mean / median |",
+         "|---|---|---|---|"]
+    names = {"o2i": "O2I (indoor)", "los": "LOS (in car)", "nlos": "NLOS (in car)"}
+    for key, e in ds["by_condition"].items():
+        L.append(f"| {names[key]} | {100 * e['ut_share']:.0f} % | "
+                 f"{100 * e['cluster_blocked_share']:.0f} % | {100 * e['power_lost_mean']:.0f} / "
+                 f"{100 * e['power_lost_p50']:.0f} % |")
+    for key, e in ds["by_mode"].items():
+        L.append(f"| {key.capitalize()} grip | — | — | {100 * e['power_lost_mean']:.0f} / "
+                 f"{100 * e['power_lost_p50']:.0f} % |")
+    L += ["",
          "## Arrival rates and NR", "",
          "| Precoder | Load | Rate [UTs/s/cell]: no grip → grip | RU | NR mean rank | "
          "NR UPT mean / p5 / p95 [Mbit/s]: no grip → grip | NR UPT change [%] |",

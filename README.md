@@ -164,7 +164,8 @@ Every field of `nrsls.ScenarioConfig` can be overridden:
 For example, `ue_self_blocking=True` adds the users' hand grip: the UT
 self-blocking of TR 38.901 §7.6.4.1 (blockage model A). Each UT is held in
 portrait or landscape mode, half and half, with a random orientation, and a
-cluster that arrives in the grip's region loses 30 dB.
+cluster that arrives in the grip's region loses 30 dB; see
+[docs/cw2lm-hand-grip.md](docs/cw2lm-hand-grip.md).
 
 `--jobs N` spreads drops over N spawned processes with single-threaded BLAS.
 Results do not depend on N, because drop *i* always uses the random stream

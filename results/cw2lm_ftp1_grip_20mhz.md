@@ -8,11 +8,22 @@ FTP model 1, 20 MHz / 44 dBm, OLLA warm + fast start, HARQ fix, synchronous HARQ
 |---|---|
 | Serving-link clusters blocked | 25 % |
 | Serving-link multipath power lost (mean share) | 26 % |
-| LOS ray blocked (LOS serving links, 1780) | 11 % |
 | Loss toward the former serving cell [dB]: mean / median / p90 / max | 3.8 / 1.3 / 10.8 / 30.0 |
 | Loss of the strongest cell after re-attachment [dB]: mean / median / p90 / max | 2.4 / 1.1 / 6.5 / 30.0 |
 | UTs that change serving cell | 19 % |
+| LOS ray blocked: all LOS links / LOS links that served before the grip (of those UTs, share that re-attach) / LOS serving links after it | 35 % / 31 % (79 %) / 11 % |
+| LOS serving links: median arrival zenith of the LOS ray | 77° |
 | Geometry (full-load SINR) [dB], mean / p5 / p50 / p95: no grip → grip | 3.9 / −3.5 / 2.6 / 15.9 → 4.1 / −3.5 / 2.7 / 16.1 |
+
+Serving link after the grip, by its condition and by the grip mode:
+
+| Serving link | UTs | Clusters blocked | Multipath power lost, mean / median |
+|---|---|---|---|
+| O2I (indoor) | 80 % | 27 % | 29 / 24 % |
+| LOS (in car) | 16 % | 17 % | 12 / 2 % |
+| NLOS (in car) | 4 % | 18 % | 18 / 15 % |
+| Portrait grip | — | — | 23 / 15 % |
+| Landscape grip | — | — | 28 / 21 % |
 
 ## Arrival rates and NR
 

@@ -7,7 +7,7 @@ This repeats the FTP study of [cw2lm-ftp.md](cw2lm-ftp.md) with a different carr
 - **Blocks:** the "Reciprocity based precoding" rows hold sub-band SVD and "Other precoding scheme" wideband SVD; the codebook blocks are empty.
 - **Sources:** tables in [results/cw2lm_ftp1_warmfast_20mhz.md](../results/cw2lm_ftp1_warmfast_20mhz.md), filled by `examples/fill_cw2l_template_ftp1.py`.
 
-**Hand grip, 2026-11-09.** The FTP model 1 warm + fast set was rerun with the users' hand grip. The model is the UT self-blocking of TR 38.901 §7.6.4.1, blockage model A without the non-self blockers (`ue_self_blocking=True`).
+**Hand grip, 2026-11-09.** The FTP model 1 warm + fast set was rerun with the users' hand grip. The model is the UT self-blocking of TR 38.901 §7.6.4.1, blockage model A without the non-self blockers (`ue_self_blocking=True`). The model and the results are described in detail in [cw2lm-hand-grip.md](cw2lm-hand-grip.md).
 - **Model:** each UT is held in portrait mode (one hand) or landscape mode (two hands), half and half. Its random azimuth orientation also turns its array. A cluster whose centre arrives in the grip's region of Table 7.6.4.1-1 loses 30 dB, and so does the LOS ray when it arrives there. In-car UTs are held like the others.
 - **Runs:** the arrival rates were recalibrated with the grip, then the full set reran: 360 runs, 10 drops. An extra 80 NR runs at the no-grip rates separate the array orientation from the blocking. The tables are in [results/cw2lm_ftp1_grip_20mhz.md](../results/cw2lm_ftp1_grip_20mhz.md), whose script, `examples/cw2lm_ftp1_grip_compare.py`, lists the commands.
 - **What the grip does to a drop:**
