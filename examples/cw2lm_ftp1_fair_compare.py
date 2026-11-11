@@ -44,6 +44,8 @@ L = ["FTP model 1, 20 MHz / 44 dBm, MMSE-IRC, OLLA warm + fast start, HARQ refil
      "round trip.  Gains vs NR compare a scheme with NR under the same setting; 'own UPT' "
      "compares a scheme with itself across the two settings (same drops and arrivals).", "",
      "## Mean UPT gain over NR, fair baseline", "",
+     "Mean over the files of all 10 drops, with the standard error of the 10 single-drop gains "
+     "(paired drops) after the ±.", "",
      "| Precoding | Scheme | 20 % | 50 % | 70 % load | Single drops above zero |",
      "|---|---|---|---|---|---|"]
 for case in CASE:
@@ -51,13 +53,21 @@ for case in CASE:
         row, pos = [], []
         for ld in ("20", "50", "70"):
             g = B.get((case, ld), {}).get(s, {}).get("gain_vs_nr_pct")
-            row.append(f(g["upt_mean"]) + " %" if g else "")
             if g:
                 d = g["upt_mean_per_drop"]
+                m = sum(d) / len(d)
+                se = (sum((x - m) ** 2 for x in d) / (len(d) - 1) / len(d)) ** 0.5
+                row.append(f"{f(g['upt_mean'])} ± {se:.1f} %")
                 pos.append(f"{sum(x > 0 for x in d)} of {len(d)}")
         if any(row):
             L.append(f"| {CASE[case]} | {NAME[s]} | " + " | ".join(row) + " | " + " / ".join(pos) + " |")
-L.append("")
+L += ["", "NR's resource utilisation in the fair baseline (the arrival rates are those calibrated "
+      "for 20 / 50 / 70 % with plain OLLA and an 8-slot round trip; NR is 4–6 % faster here): "
+      + "; ".join(f"{CASE[c]} " + " / ".join(f"{100 * B[(c, ld)]['nr']['ru']:.0f}" for ld in ("20", "50", "70")
+                                             if (c, ld) in keys) + " %" for c in CASE) + ".", "",
+      "The fair-baseline runs used a buffer-estimate cap of 7.406 instead of 7.4 bit per RE and "
+      "layer (see docs/qam1024-50mhz.md).  12 of them were repeated with 7.4: 7 were identical, the "
+      "other 5 moved a run's mean UPT by −0.5 to +0.02 %.", ""]
 for case, load in keys:
     L += [f"### {CASE[case]}, {load} % load", "",
           "| Scheme | Drops | BLER per CW [%]: before → fair | Gain vs NR, mean / p5 / p95 [%]: "

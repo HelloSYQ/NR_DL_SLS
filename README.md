@@ -87,6 +87,16 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   [`docs/cw2lm-ftp-20mhz.md`](docs/cw2lm-ftp-20mhz.md) and
   `6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx`.
 
+- **Fair-baseline rerun of the FTP model 1 study** (2026-11-11). MMSE-IRC, 20 MHz,
+  256QAM, 10 drops, with one OLLA loop per transmission rank for every scheme
+  (NR too) and a 4-slot HARQ round trip (variant `irc-fix-warmfast-pr-rtt4`).
+  NR itself is 4–6 % faster than before, and over it LTE style gains
+  +2.3 / +1.1 / +1.3 % and one codeword per layer +2.7 / +1.5 / +1.2 % mean UPT
+  at 20 / 50 / 70 % load with sub-band SVD (wideband SVD: +0.9 / +1.0 / +1.5 %
+  and +0.7 / +1.6 / +1.1 %), standard error 0.3–0.6 points. See
+  [`results/cw2lm_ftp1_fair_20mhz.md`](results/cw2lm_ftp1_fair_20mhz.md); logs in
+  `results/ftp1_fair/`, cap check in `results/ftp1_fair_capcheck/`.
+
 - **1024QAM and a 50 MHz carrier** (2026-11-11). `FullBufferConfig.mcs_table = 4` is
   the Rel-17 1024QAM table (TS 38.214 Table 5.1.3.1-4) and `evm_percent` limits
   every SINR to 1 / EVM²; the study script has set-ups `50mhz-ftp1` (133 PRB,
