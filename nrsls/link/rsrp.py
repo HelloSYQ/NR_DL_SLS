@@ -14,6 +14,9 @@ port u at its arrival angles; the LOS ray uses [[1, 0], [0, -1]].  The array
 phases drop out because each port is a single (virtual) antenna.  UT ports
 are isotropic with 0 / 90 deg polarisation (P = 2) or 0 deg (P = 1).
 
+With UT self-blocking (``propagation.blockage``) each cluster's P_n and the
+LOS ray carry the blocking loss of the UT's grip.
+
 With analog beams (:func:`multipath_beam_gains`) the TXRU is a 2-D
 sub-array whose array factor depends on the ray direction; it is a real
 power factor per ray, shared by both polarisations, so it multiplies g_nm.
@@ -48,7 +51,13 @@ def _ray_gains(cl: Clusters, port_field, ue_pol: int):
     else:
         g = g_t
     lt, lp = port_field(cl.los_aod, cl.los_zod)
-    return g, _ue_power(lt, -lp, ue_pol)
+    g_los = _ue_power(lt, -lp, ue_pol)
+    return g, g_los if cl.los_gain is None else g_los * cl.los_gain
+
+
+def _rx_power(cl: Clusters):
+    """Cluster powers at the UT, after its self-blocking (if any)."""
+    return cl.power if cl.gain is None else cl.power * cl.gain
 
 
 def multipath_gain(cl: Clusters, port_field, ue_pol: int) -> np.ndarray:
@@ -58,7 +67,7 @@ def multipath_gain(cl: Clusters, port_field, ue_pol: int) -> np.ndarray:
     at GCS departure angles of any shape.
     """
     g, g_los = _ray_gains(cl, port_field, ue_pol)
-    nlos = np.sum(cl.power[..., None] * g, axis=(1, 2)) / N_RAYS
+    nlos = np.sum(_rx_power(cl)[..., None] * g, axis=(1, 2)) / N_RAYS
     k = cl.k_r
     return nlos / (k + 1) + g_los * k / (k + 1)
 
@@ -77,7 +86,7 @@ def multipath_beam_gains(cl: Clusters, element_field, ue_pol: int,
     """
     g, g_los = _ray_gains(cl, element_field, ue_pol)
     w = beam_power(cl.aod, cl.zod)                            # (B, L, N, M)
-    nlos = np.einsum("ln,blnm,lnm->bl", cl.power, w, g) / N_RAYS
+    nlos = np.einsum("ln,blnm,lnm->bl", _rx_power(cl), w, g) / N_RAYS
     w_los = beam_power(cl.los_aod, cl.los_zod)                # (B, L)
     k = cl.k_r
     return nlos / (k + 1) + w_los * g_los * k / (k + 1)

@@ -187,6 +187,18 @@ SETUPS = {
                        cal_rates=(5.0, 8.0, 11.0, 14.0, 17.0, 20.0),
                        carrier="4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB)",
                        power="44 dBm per 20 MHz"),
+    # the same with the users' hand grip (TR 38.901 7.6.4.1 UT self-blocking:
+    # portrait / landscape 50 / 50, random orientation, 30 dB); the arrival
+    # rates are recalibrated for it
+    "20mhz-ftp1-grip": dict(preset=dict(carrier=CarrierConfig(mu=1, n_size_grid=52),
+                                        bs_tx_power_dbm=44.0, channel_bandwidth_hz=20e6,
+                                        ue_per_cell=20, ue_self_blocking=True),
+                            traffic="ftp1",
+                            rates=os.path.join(OUT, "cw2lm_ftp1_grip_rates_20mhz.json"),
+                            out=os.path.join(OUT, "cw2lm_ftp1_grip_20mhz.json"),
+                            cal_rates=(5.0, 8.0, 11.0, 14.0, 17.0, 20.0),
+                            carrier="4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB)",
+                            power="44 dBm per 20 MHz"),
 }
 # 50 MHz at 30 kHz: 133 PRB (TS 38.101-1 Table 5.3.2-1), M.2412's 44 dBm per
 # 20 MHz at the same power per Hz (48 dBm), RBG and CSI sub-band of 8 PRB
@@ -216,6 +228,15 @@ SETUPS["50mhz-ftp1-1024qam"] = _ftp1_setup(
     "50mhz_1024qam", _PRESET_50MHZ, (12.5, 20.0, 27.5, 35.0, 42.5, 50.0),
     "4 GHz FDD, 30 kHz SCS, 50 MHz channel (133 PRB), 1024QAM, EVM 2.5 %",
     "48 dBm per 50 MHz", dict(_FB_1024QAM, rbg_size=8), rates_tag="50mhz")
+# controls for the grip, NR at the no-grip rates: the UT orientation alone (the
+# array turns, nothing is blocked: 0 dB) and the full grip
+SETUPS["20mhz-ftp1-orient"] = dict(
+    SETUPS["20mhz-ftp1-grip"], rates=SETUPS["20mhz-ftp1"]["rates"],
+    preset=dict(SETUPS["20mhz-ftp1-grip"]["preset"], self_blocking_db=0.0),
+    out=os.path.join(OUT, "cw2lm_ftp1_orient_20mhz.json"))
+SETUPS["20mhz-ftp1-grip-norecal"] = dict(
+    SETUPS["20mhz-ftp1-grip"], rates=SETUPS["20mhz-ftp1"]["rates"],
+    out=os.path.join(OUT, "cw2lm_ftp1_grip_norecal_20mhz.json"))
 CAL_RATES = SETUPS[DEFAULT_SETUP]["cal_rates"]
 
 

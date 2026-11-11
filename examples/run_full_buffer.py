@@ -87,11 +87,15 @@ def main():
     ap.add_argument("--olla-warm-samples", type=int, default=0,
                     help="OLLA warm start (FTP model 1): a new UT's loops start from "
                          "the mean of the loops with at least this many ACK/NACKs (0: off)")
+    ap.add_argument("--self-blocking", action="store_true",
+                    help="UT hand grip: TR 38.901 7.6.4.1 self-blocking (portrait / "
+                         "landscape, random orientation, 30 dB)")
     ap.add_argument("--ideal-la", action="store_true",
                     help="reference: MCS from the SINR each new TB actually gets")
     args = ap.parse_args()
 
-    cfg = get_preset(args.preset, ue_per_cell=args.ue_per_cell)
+    cfg = get_preset(args.preset, ue_per_cell=args.ue_per_cell,
+                     ue_self_blocking=args.self_blocking)
     summary, ue_se = {}, {}
     for cb in args.codebooks:
         fb = FullBufferConfig(n_slots=args.slots, warmup_slots=args.warmup,
