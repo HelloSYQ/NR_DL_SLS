@@ -30,6 +30,9 @@ covariance of the measurement slot (TS 38.214 clause 5.2.2.1).
     CQI of codeword k from the SINRs of its layers once the layers of
     codewords 0..k-1 are cancelled (assumed decoded); codeword 0, and a
     single codeword, see plain MMSE-IRC.
+  * EVM (``evm_percent``): the per-layer SINRs the CQIs and the RI come from
+    are limited to 1 / EVM^2 (``phy/sinr.py`` ``evm_limited``), as the SINRs
+    of the transmissions are.
   * RI: the rank that maximises sum_CW layers(CW) x spectral efficiency of
     the codeword's wideband CQI, i.e. rank x SE(CQI) with one codeword.
     Two options for the codeword-mapping study, neither changing the
@@ -58,7 +61,7 @@ from math import ceil, log2
 
 from .codebook.etype2 import ETypeIICodebook
 from .codebook.type1 import TypeICodebook, _v
-from .sinr import capacity, mmse_sinr
+from .sinr import capacity, evm_limited, mmse_sinr
 
 
 def cw_layer_groups(rank: int, max_codewords: int, mapping: str | None = None) -> list:
@@ -118,7 +121,7 @@ class CSIProcessor:
                  score_step: int = 1, etype2_combo: int = 6,
                  pmi_subband: bool = True, max_codewords: int = 1,
                  sic: bool = False, ri_sic_propagation: bool = False,
-                 cw_mapping: str | None = None):
+                 cw_mapping: str | None = None, evm_percent: float = 0.0):
         self.n1, self.n2, self.o1, self.o2 = n1, n2, o1, o2
         self.codebook = codebook
         self.max_rank = max_rank
@@ -126,6 +129,7 @@ class CSIProcessor:
         self.sic = sic
         self.ri_sic_propagation = ri_sic_propagation
         self.cw_mapping = cw_mapping
+        self.evm_percent = evm_percent    # SINR ceiling (phy/sinr.py evm_limited)
         self.cqi_table = mcs_tables.MCS_TO_CQI_TABLE[mcs_table]
         self.target_bler = target_bler
         self.n_re_per_rb = n_re_per_rb
@@ -228,11 +232,11 @@ class CSIProcessor:
         groups = (cw_layer_groups(rank, self.max_codewords, self.cw_mapping) if self.sic
                   else ())
         if len(groups) < 2:
-            return mmse_sinr(g)
+            return evm_limited(mmse_sinr(g), self.evm_percent)
         out = np.empty(g.shape[:-2] + (rank,))
         for grp in groups:              # contiguous groups, decoded in order
             out[..., grp] = mmse_sinr(g[..., grp[0]:])[..., :len(grp)]
-        return out
+        return evm_limited(out, self.evm_percent)
 
     def _precoder(self, hw, subband_of_f, rank):
         """(w, pmi, per-layer SINR (F, r), PMI bits) of one rank, or None if
