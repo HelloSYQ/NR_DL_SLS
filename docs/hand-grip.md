@@ -45,7 +45,7 @@ Singular values of each UT's serving channel (4 × 32, mean in dB over frequency
 | Self-blocking + hand loss 10 dB | 4.0 dB (2.1–7.7) | 12.6 dB (7.4–22.1) | 19.2 dB (15.1–28.9) |
 
 - **The hand loss falls on the weakest layer.** Per UT, 6 dB on the covered antennas widens the gap to layer 1 by 0.3 dB (layer 2), 1.2 dB (layer 3) and 2.3 dB (layer 4) at the median, and for layer 4 by more than 1 dB for nine UTs in ten.
-- **It is the larger of the two effects on layer 4.** 6 dB on one or two antennas moves layer 4 by 2.3 dB, the 30 dB self-blocking by 1.3 dB.
+- **It is the larger of the two effects on layer 4.** 6 dB on one or two antennas moves the median gap of layer 4 by 2.3 dB, the 30 dB self-blocking by 1.3 dB.
 - **The self-blocking is uneven, the hand loss is not.** The self-blocking leaves most UTs alone and costs a fifth of them more than 3 dB on layers 3 and 4; the hand loss costs every UT with a covered antenna about the same.
 
 ### First look in the system
@@ -65,7 +65,8 @@ NR gives up rank 4 for some users when the fourth layer is weaker; the multi-cod
 ## Running it
 
 ```bash
-python examples/run_full_buffer.py --preset du-a ...        # ue_self_blocking via get_preset(...)
+python -c "from nrsls import get_preset; print(get_preset('du-a', ue_self_blocking=True, hand_loss_db=6.0))"
+python examples/run_full_buffer.py --preset du-a --self-blocking --codebooks svd --drops 1   # 38.901 grip only
 python examples/cw2lm_ftp_eval.py --setup 20mhz-ftp1-grip-hand --cases svd_sb_20ms,svd_20ms \
     --variants irc-fix-warmfast --loads 20,50 --slots 1000 --warmup 0 --drain 0 --drops 10 \
     --log results/ftp1_grip_hand/runs.jsonl
