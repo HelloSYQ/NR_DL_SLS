@@ -91,8 +91,8 @@ class FullBufferConfig:
     # impairments together): every post-equaliser SINR, in the CSI and in the
     # decoding, becomes 1 / (1 / SINR + EVM^2), at most 1 / EVM^2.  0: none,
     # SINRs are unbounded.  TS 38.104 lets a BS have 3.5 % with 256QAM and
-    # 2.5 % with 1024QAM (ceilings of 29.1 and 32.0 dB); 1024QAM's highest
-    # rates need 31-32 dB, so evaluate it with an EVM
+    # 2.5 % with 1024QAM (ceilings of 29.1 and 32.0 dB); 1024QAM needs 28 to
+    # 32 dB, so evaluate it with an EVM
     evm_percent: float = 0.0
     target_bler: float = 0.1
     olla_step_db: float = 0.5

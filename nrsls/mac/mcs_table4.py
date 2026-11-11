@@ -16,7 +16,7 @@ Source of the values: the four 1024QAM rows (R x 1024 = 805.5, 853, 900.5,
 which five of table 2's rows are dropped was entered from memory of the
 specification.  Check against TS 38.214 before quoting absolute numbers.
 
-1024QAM needs about 27 dB of post-equaliser SINR and more than 32 dB for its
+1024QAM needs about 28 dB of post-equaliser SINR and more than 32 dB for its
 highest rate, where transmitter and receiver impairments matter: see
 ``FullBufferConfig.evm_percent``.
 """
