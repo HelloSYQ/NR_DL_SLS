@@ -96,9 +96,14 @@ def bs_response(cfg: BSAntennaConfig, bearing_deg, az, zen):
     return F * (af[..., None] * loc)[..., None]
 
 
-def ue_response(ue: UEAntenna, az, zen):
+def ue_response(ue: UEAntenna, az, zen, bearing_deg=None):
+    """(..., U, 2) port responses at GCS arrival angles.  ``bearing_deg``
+    turns the UT about z (isotropic elements: the array is evaluated at the
+    LCS azimuth az - bearing, the polarisation basis is unchanged)."""
     pos, sl = ue_port_layout(ue)
     F = np.stack([np.cos(sl), np.sin(sl)], -1) * np.ones(np.shape(az) + (1, 1))
+    if bearing_deg is not None:
+        az = az - bearing_deg
     loc = np.exp(2j * np.pi * (_dir_cosines(az, zen) @ pos.T))
     return F * loc[..., None]
 
@@ -115,15 +120,17 @@ def link_channel(cl: Clusters, link: int, bs_cfg: BSAntennaConfig,
     strongest = n_idx[np.argsort(p)[::-1][:2]]
     aod, zod = cl.aod[link, n_idx], cl.zod[link, n_idx]            # (N, M)
     aoa, zoa = cl.aoa[link, n_idx], cl.zoa[link, n_idx]
+    rot = None if cl.ue_bearing_deg is None else cl.ue_bearing_deg[link]
     tx = bs_response(bs_cfg, bearing_deg, aod, zod)               # (N, M, S, 2)
-    rx = ue_response(ue, aoa, zoa)                                # (N, M, U, 2)
+    rx = ue_response(ue, aoa, zoa, rot)                           # (N, M, U, 2)
     ik = 1 / np.sqrt(cl.kappa[link, n_idx])
     e = np.exp(1j * cl.phase[link, n_idx])
     # polarisation matrix times the tx field: (N, M, S, 2)
     pt = np.stack([e[..., 0, None] * tx[..., 0] + (ik * e[..., 1])[..., None] * tx[..., 1],
                    (ik * e[..., 2])[..., None] * tx[..., 0] + e[..., 3, None] * tx[..., 1]],
                   axis=-1)
-    amp = np.sqrt(p / N_RAYS)[:, None]                              # (N, 1)
+    p_rx = p if cl.gain is None else p * cl.gain[link, n_idx]        # self-blocking
+    amp = np.sqrt(p_rx / N_RAYS)[:, None]                           # (N, 1)
     coef = amp[..., None, None] * np.einsum("nmua,nmsa->nmus", rx, pt)
     # sub-cluster delays for the two strongest clusters
     sub = np.isin(n_idx, strongest)[:, None] * _RAY_SUB[None, :]
@@ -142,12 +149,16 @@ def link_channel(cl: Clusters, link: int, bs_cfg: BSAntennaConfig,
             a_d, z_d = cl.los_aod[link], cl.los_zod[link]
             a_a, z_a = cl.los_aoa[link], cl.los_zoa[link]
             txl = bs_response(bs_cfg, bearing_deg, np.array(a_d), np.array(z_d))
-            rxl = ue_response(ue, np.array(a_a), np.array(z_a))
+            rxl = ue_response(ue, np.array(a_a), np.array(z_a), rot)
             ptl = np.stack([txl[..., 0], -txl[..., 1]], -1)
             hl = np.einsum("ua,sa->us", rxl, ptl)
+            if cl.los_gain is not None:
+                hl = hl * np.sqrt(cl.los_gain[link])
             fdl = _dir_cosines(a_a, z_a) @ np.asarray(velocity_mps, float) / wavelength_m
             hl = hl * np.exp(-2j * np.pi * d3d_m / wavelength_m) * np.exp(2j * np.pi * fdl * t)
             h = h + np.sqrt(k / (k + 1)) * hl[None]
+        if cl.port_gain is not None:                                # hand loss per antenna
+            h = h * np.sqrt(cl.port_gain[link])[None, :, None]
         out.append(h)
     return np.stack(out)                                            # (T, F, U, S)
 
@@ -170,12 +181,22 @@ def subset_clusters(cl: Clusters, idx, dtype=np.float32) -> Clusters:
         zod=cl.zod[idx].astype(dtype), kappa=cl.kappa[idx].astype(dtype),
         phase=cl.phase[idx].astype(dtype), k_r=cl.k_r[idx],
         los_aod=cl.los_aod[idx], los_zod=cl.los_zod[idx],
-        los_aoa=cl.los_aoa[idx], los_zoa=cl.los_zoa[idx], c_ds_s=cl.c_ds_s[idx])
+        los_aoa=cl.los_aoa[idx], los_zoa=cl.los_zoa[idx], c_ds_s=cl.c_ds_s[idx],
+        **{f: None if getattr(cl, f) is None else getattr(cl, f)[idx].astype(t)
+           for f, t in (("aoa_c", dtype), ("zoa_c", dtype), ("gain", dtype),
+                        ("los_gain", float), ("ue_bearing_deg", float),
+                        ("port_gain", float))})
 
 
 def concat_clusters(parts) -> Clusters:
-    return Clusters(**{f: np.concatenate([getattr(p, f) for p in parts])
-                       for f in Clusters.__dataclass_fields__})
+    out = {}
+    for f in Clusters.__dataclass_fields__:
+        v = [getattr(p, f) for p in parts]
+        n_none = sum(x is None for x in v)
+        if 0 < n_none < len(v):
+            raise ValueError(f"cannot concatenate clusters with and without {f!r}")
+        out[f] = None if n_none else np.concatenate(v)
+    return Clusters(**out)
 
 
 def _tx_scalar_and_slants(cfg: BSAntennaConfig, bearing, az, zen):
@@ -253,10 +274,17 @@ def channel_batch(cl: Clusters, bearing_deg, bs_cfg: BSAntennaConfig,
     # --- rx and Doppler ---
     aoa, zoa = cl.aoa.astype(np.float32), cl.zoa.astype(np.float32)
     r_rx = _dir_cosines(aoa, zoa)
-    loc_u = np.exp(2j * np.pi * (r_rx @ pos_u.T))                    # (L, N, M, U)
+    if cl.ue_bearing_deg is None:
+        loc_u = np.exp(2j * np.pi * (r_rx @ pos_u.T))                # (L, N, M, U)
+    else:       # UT turned about z: its array sees the LCS azimuths
+        rot = cl.ue_bearing_deg.astype(np.float32)[:, None, None]
+        loc_u = np.exp(2j * np.pi * (_dir_cosines(aoa - rot, zoa) @ pos_u.T))
     v = np.asarray(velocity_mps, float).reshape(n_links, 3)
     dop = np.exp(2j * np.pi * np.einsum("lnmi,li->lnm", r_rx, v) / wavelength_m * t_s)
-    amp = np.sqrt(np.where(cl.valid, cl.power, 0.0) / N_RAYS)[..., None] * dop
+    pw = np.where(cl.valid, cl.power, 0.0)
+    if cl.gain is not None:                                          # self-blocking
+        pw = pw * cl.gain
+    amp = np.sqrt(pw / N_RAYS)[..., None] * dop
     w = (amp[..., None] * loc_u).astype(np.complex64)                 # (L, N, M, U)
     # sub-cluster sums as batched matmuls: (U, M) @ (M, S) per (l, n, k)
     wk = np.swapaxes(w, -1, -2)[:, :, None] * _SUB_ONEHOT.T[None, None, :, None, :]
@@ -280,10 +308,15 @@ def channel_batch(cl: Clusters, bearing_deg, bs_cfg: BSAntennaConfig,
     for l in los:
         txl = bs_response(bs_cfg, bearing[l], np.array(cl.los_aod[l]),
                           np.array(cl.los_zod[l]))
-        rxl = ue_response(ue, np.array(cl.los_aoa[l]), np.array(cl.los_zoa[l]))
+        rxl = ue_response(ue, np.array(cl.los_aoa[l]), np.array(cl.los_zoa[l]),
+                          None if cl.ue_bearing_deg is None else cl.ue_bearing_deg[l])
         hl = np.einsum("ua,sa->us", rxl, np.stack([txl[..., 0], -txl[..., 1]], -1))
+        if cl.los_gain is not None:
+            hl = hl * np.sqrt(cl.los_gain[l])
         fdl = _dir_cosines(cl.los_aoa[l], cl.los_zoa[l]) @ v[l] / wavelength_m
         hl = hl * np.exp(-2j * np.pi * d3d_m[l] / wavelength_m + 2j * np.pi * fdl * t_s)
         k = cl.k_r[l]
         h[l] += np.sqrt(k / (k + 1)) * hl[None]
+    if cl.port_gain is not None:                                     # hand loss per antenna
+        h = h * np.sqrt(cl.port_gain)[:, None, :, None]
     return h.astype(np.complex64)

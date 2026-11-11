@@ -7,7 +7,8 @@ TR 38.901 clause 7.5:
   3. basic pathloss (Table 7.4.1-1) + O2I / in-car penetration (7.4.3);
   4. the seven LSPs (SF, K, DS, ASD, ASA, ZSD, ZSA), spatially and
      cross-correlated, per site and link condition;
-  5-10. (``coupling_model='multipath'``) clusters and rays per link;
+  5-10. (``coupling_model='multipath'``) clusters and rays per link, with
+     the UT self-blocking of clause 7.6.4.1 (``cfg.ue_self_blocking``);
 
 then the port-0 gain of every cell toward every UT -- the ray-summed RSRP
 of TR 36.873 eq. (8.1-1), or the gain toward the LOS direction for
@@ -27,6 +28,7 @@ from ..antenna.array import BSAntenna
 from ..config.scenario import ScenarioConfig
 from ..link import association, link_budget
 from ..propagation import lsp, o2i as o2i_mod, pathloss
+from ..propagation.blockage import SelfBlocking, apply_self_blocking, draw_self_blocking
 from ..link.rsrp import multipath_beam_gains, multipath_gain
 from ..propagation.clusters import generate_clusters
 from ..propagation.fast_fading import subset_clusters
@@ -63,6 +65,8 @@ class LargeScaleDrop:
     # clusters/rays of every (site, UT) link, one entry per site (compact
     # float32 copies), kept only when requested (phase-3 channel synthesis)
     clusters: list | None = None
+    # UT grip of the drop (cfg.ue_self_blocking), else None
+    self_blocking: SelfBlocking | None = None
 
     @property
     def serving_site(self) -> np.ndarray:
@@ -131,6 +135,14 @@ def generate_drop(cfg: ScenarioConfig, rng, keep_clusters: bool = False) -> Larg
     car = o2i_mod.in_car_loss_db(ues.in_car, rng, *cfg.car_loss_db)
     pen = pen + car[None, :]
 
+    # --- UT grip (self-blocking): a child stream, so the rest of the drop
+    # is the same with and without it (spawning does not advance rng) ---
+    sb = (draw_self_blocking(n_ue, cfg.self_blocking_landscape_ratio,
+                             cfg.self_blocking_db, rng.spawn(1)[0],
+                             n_ports=cfg.ue_antenna.n_ports, hand_loss_db=cfg.hand_loss_db,
+                             covered=cfg.hand_covered_antennas)
+          if cfg.ue_self_blocking else None)
+
     # --- per-cell port-0 gain toward every UT ---
     ant = BSAntenna(cfg.bs_antenna)
     site = layout.cell_site
@@ -151,6 +163,8 @@ def generate_drop(cfg: ScenarioConfig, rng, keep_clusters: bool = False) -> Larg
                              for k, v in vars(lsps).items()})
             cl = generate_clusters(fam, cfg.carrier_freq_ghz, cond[s], ls,
                                    az[s], zen[s], rng)
+            if sb is not None:
+                cl = apply_self_blocking(cl, sb)
             for c in np.nonzero(site == s)[0]:
                 b = layout.cell_bearing_deg[c]
                 if beams:
@@ -192,4 +206,4 @@ def generate_drop(cfg: ScenarioConfig, rng, keep_clusters: bool = False) -> Larg
         shadow_fading_db=sf, penetration_db=np.asarray(pen), lsps=lsps,
         bs_gain_db=gain, coupling_gain_db=cg, rx_power_dbm=rx,
         serving_cell=serving, geometry_db=geom, noise_dbm=noise,
-        clusters=kept)
+        clusters=kept, self_blocking=sb)
