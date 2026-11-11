@@ -142,3 +142,19 @@ def test_fast_start_options_checked(kw):
     cfg, fb = _ftp1(rate_per_cell=10.0)
     with pytest.raises(ValueError):
         run_full_buffer_drop(cfg, dataclasses.replace(fb, **kw), np.random.default_rng(0))
+
+
+def test_fair_baseline_variant_of_the_study_script():
+    import os
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "examples"))
+    import cw2lm_ftp_eval as ev
+    v = "irc-fix-warmfast-pr-rtt4"
+    assert ev.nr_reference(v) == v                   # NR runs with the same link adaptation
+    for scheme in ("nr", "lte", "per_layer"):
+        fb = ev.fb_config("svd_sb_20ms", v, scheme, 7.0, 1000, 0, 0, "20mhz-ftp1")
+        assert fb.olla_per_rank and fb.harq_rtt_slots == 4 and fb.harq_refill == "fresh"
+        assert (fb.olla_fast_gain, fb.olla_fast_samples, fb.olla_warm_samples) == (4.0, 20, 20)
+        assert fb.receiver == "irc" and not fb.ri_olla and fb.mcs_table == 2
+    base = ev.fb_config("svd_sb_20ms", "irc-fix-warmfast", "nr", 7.0, 1000, 0, 0, "20mhz-ftp1")
+    assert not base.olla_per_rank and base.harq_rtt_slots == 8

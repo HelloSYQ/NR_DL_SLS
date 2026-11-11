@@ -34,6 +34,12 @@ retransmission (``harq_refill='always'``).  The screening variants of
             priority but takes the best free RBGs for the UT's current report
             instead of its own; NR runs with it too
 
+  *-warmfast-pr-rtt4  the fair MMSE-IRC comparison of 2026-11-12: warm + fast
+            start, one OLLA loop per transmission rank (and codeword) for
+            every scheme, NR too (olla_per_rank; NR's single loop for all
+            ranks was what the multi-codeword schemes gained on), and a HARQ
+            round trip of 4 slots, 2 ms at 30 kHz, instead of 8
+
 Cases, both with CSI every 20 ms that is 4 ms old when used:
 
   etype2_20ms   Rel-16 eType-II codebook (parameter combination 6)
@@ -129,6 +135,8 @@ VARIANTS = {"irc-olla": dict(_LEGACY), "sic-olla": dict(_SIC, **_LEGACY),
             "irc-fix-fast": dict(_FAST), "irc-fix-fastw": dict(_FASTW),
             "irc-fix-warmfast": dict(_FAST, olla_warm_samples=20),
             "sic-fix-warmfast": dict(_SIC, **_FAST, olla_warm_samples=20),
+            "irc-fix-warmfast-pr-rtt4": dict(_FAST, olla_warm_samples=20, olla_per_rank=True,
+                                             harq_rtt_slots=4),
             "irc-fix-warmfast-async": dict(_FAST, olla_warm_samples=20, harq_mode="async"),
             "sic-fix-warmfast-async": dict(_SIC, **_FAST, olla_warm_samples=20,
                                            harq_mode="async")}
