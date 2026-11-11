@@ -237,6 +237,14 @@ SETUPS["20mhz-ftp1-orient"] = dict(
 SETUPS["20mhz-ftp1-grip-norecal"] = dict(
     SETUPS["20mhz-ftp1-grip"], rates=SETUPS["20mhz-ftp1"]["rates"],
     out=os.path.join(OUT, "cw2lm_ftp1_grip_norecal_20mhz.json"))
+# the grip with a per-antenna hand loss (not in TR 38.901; ScenarioConfig
+# hand_loss_db): the hand covers 1 (portrait) or 2 (landscape) of the UT's 4
+# antennas, each then 6 dB weaker, a placeholder value.  On the grip's rates
+HAND_LOSS_DB = 6.0
+SETUPS["20mhz-ftp1-grip-hand"] = dict(
+    SETUPS["20mhz-ftp1-grip"],
+    preset=dict(SETUPS["20mhz-ftp1-grip"]["preset"], hand_loss_db=HAND_LOSS_DB),
+    out=os.path.join(OUT, "cw2lm_ftp1_grip_hand_20mhz.json"))
 CAL_RATES = SETUPS[DEFAULT_SETUP]["cal_rates"]
 
 

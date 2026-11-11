@@ -298,6 +298,15 @@ def _rbg_bits(cur, rb_per_rbg, n_re, se_max=7.4):
     return per_re * n_re * rb_per_rbg
 
 
+def _se_max(mcs_table: int) -> float:
+    """Cap of :func:`_rbg_bits` [bit/RE per layer]: exactly 7.4 for the MCS
+    tables up to 256QAM, as before 1024QAM was added (256QAM's own 7.406
+    changes which RBGs a nearly served UT gets, and so the run), and the
+    table's highest spectral efficiency, 9.26, with 1024QAM."""
+    top = mcs_tables.get_mcs(mcs_tables.num_mcs(mcs_table) - 1, mcs_table).spectral_efficiency
+    return top if top > 7.5 else 7.4
+
+
 def _report_vectors(rep, n_rbg, first_f):
     """Unit-column reported precoder per RBG (n_rbg, S, r) for pairing."""
     w = rep.w
@@ -507,6 +516,20 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     rbg_sig = [tuple(nrb_f[rbg_mask[b]]) for b in range(n_rbg)]
     bs, ue_ant = cfg.bs_antenna, cfg.ue_antenna
     n_s, n_u = bs.n_ports, ue_ant.n_ports
+    # per-antenna hand loss of the UTs' grip (propagation/blockage.py): the
+    # channels carry it; the white interference of the other cells needs it
+    hand_gain = None if d.self_blocking is None else d.self_blocking.port_gain
+
+    def white_cov(r, ues=slice(None)):
+        """Thermal noise (1 per port) plus the white interference ``r`` (per
+        UT, or per UT and frequency point) of the cells beyond the explicit
+        ones, as (..., Ua, Ua); a covered antenna receives less of the
+        interference and as much noise."""
+        if hand_gain is None:
+            return (1.0 + r)[..., None, None] * np.eye(n_u)
+        g = hand_gain[ues]
+        g = g.reshape(g.shape[:1] + (1,) * (r.ndim - 1) + (n_u,))
+        return (1.0 + r[..., None] * g)[..., None] * np.eye(n_u)
 
     def channels(t):
         h = np.empty((cl_all.valid.shape[0], n_f, n_u, n_s), np.complex64)
@@ -544,10 +567,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     # + 1 additional pair, 2 CDM groups without data -> 4 x 12 REs per RB
     # pair, 2 CDM groups without data -> 4 x 12 DM-RS REs per RB
     n_re_dd = tbs_mod.re_per_rb(pdsch.num_symbols, 4 * 12, pdsch.n_oh)
-    # highest spectral efficiency per layer of the MCS table (buffer estimate);
-    # 7.4 for the tables up to 256QAM, as before 1024QAM was added
-    se_max = max(7.4, mcs_tables.get_mcs(mcs_tables.num_mcs(fb.mcs_table) - 1,
-                                         fb.mcs_table).spectral_efficiency)
+    se_max = _se_max(fb.mcs_table)
     n_lay = max(4, fb.mu_max_layers) if fb.mu_mimo else 4
     first_f = np.argmax(rbg_mask, axis=1)                   # first point of each RBG
     mu_stats = {"ues": [], "layers": []}
@@ -803,15 +823,14 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
             if need_ue.size:
                 gi = h_all[need_ue, 1:] @ w_cell[cells[need_ue, 1:]]    # (n, K, F, Ua, 4)
                 x = np.moveaxis(gi, 1, 3).reshape(need_ue.size, n_f, n_u, -1)
-                noise = 1.0 + rest[need_ue, None] * util_f[None, :]     # (n, F)
                 r_cov = (x @ np.conj(np.swapaxes(x, -1, -2))
-                         + noise[:, :, None, None] * np.eye(n_u))
+                         + white_cov(rest[need_ue, None] * util_f[None, :], need_ue))
                 hw_all[need_ue] = whitening(r_cov.astype(np.complex128)) @ h_all[need_ue, 0]
             hw = hw_all
         elif fb.mu_mimo:
             # one interferer at a time: w_cell[cells] with 8 layers would
             # copy ~1.3 GB for the default system
-            r_cov = np.broadcast_to((1.0 + rest)[:, None, None, None] * np.eye(n_u),
+            r_cov = np.broadcast_to(white_cov(rest)[:, None],
                                     (n_ue, n_f, n_u, n_u)).astype(np.complex64)
             for j in range(1, k + 1):
                 gi = h[:, j] @ w_cell[cells[:, j]]         # (U, F, Ua, Lc)
@@ -820,7 +839,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
             gi = h[:, 1:] @ w_cell[cells[:, 1:]]           # (U, K, F, Ua, 4)
             x = np.moveaxis(gi, 1, 3).reshape(n_ue, n_f, n_u, -1)   # (U, F, Ua, 4K)
             r_cov = (x @ np.conj(np.swapaxes(x, -1, -2))
-                     + (1.0 + rest)[:, None, None, None] * np.eye(n_u))
+                     + white_cov(rest)[:, None])
         if not ftp:
             lw = whitening(r_cov.astype(np.complex128))   # (U, F, Ua, Ua)
             hw = lw @ h[:, 0]                             # (U, F, Ua, S)

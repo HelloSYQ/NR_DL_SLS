@@ -169,6 +169,15 @@ class ScenarioConfig:
     ue_self_blocking: bool = False
     self_blocking_landscape_ratio: float = 0.5
     self_blocking_db: float = 30.0
+    # Per-antenna hand loss, an addition to the grip that is not in TR 38.901:
+    # the hand covers hand_covered_antennas[0] of the UT's antennas (ports)
+    # in portrait mode and [1] in landscape mode, picked at random per UT, and
+    # a covered antenna receives hand_loss_db less, from every cell and
+    # direction (absorption and detuning), while its receiver noise stays.
+    # 0 dB: none (the 38.901 grip alone).  Needs ue_self_blocking; with
+    # self_blocking_db=0 it is the hand loss without the angular blocking
+    hand_loss_db: float = 0.0
+    hand_covered_antennas: tuple = (1, 2)
 
     # --- antennas ---
     bs_antenna: BSAntennaConfig = field(default_factory=BSAntennaConfig)
@@ -190,6 +199,14 @@ class ScenarioConfig:
             raise ValueError("self_blocking_landscape_ratio must be in [0, 1]")
         if self.self_blocking_db < 0:
             raise ValueError("self_blocking_db must be >= 0")
+        if self.hand_loss_db < 0:
+            raise ValueError("hand_loss_db must be >= 0")
+        if self.hand_loss_db > 0 and not self.ue_self_blocking:
+            raise ValueError("hand_loss_db needs ue_self_blocking (the grip mode of each UT)")
+        if (len(self.hand_covered_antennas) != 2
+                or any(int(k) != k or k < 0 for k in self.hand_covered_antennas)):
+            raise ValueError("hand_covered_antennas must be two counts >= 0: "
+                             "(portrait, landscape)")
         if self.o2i_model == "legacy" and self.family not in ("uma", "umi"):
             raise ValueError("the legacy O2I model covers UMa and UMi only")
 

@@ -21,6 +21,19 @@ pick the two strongest clusters for the sub-cluster delay split (step 11)
 stay unblocked.  The orientation also turns the UT array.  Its elements are
 isotropic and the rotation is about z, so the polarisation basis does not
 change: the array is evaluated at the LCS arrival angles.
+
+Per-antenna hand loss (``hand_loss_db`` > 0), not part of TR 38.901.  The
+self-blocking above attenuates a cluster on every UT port alike, so it
+cannot make one antenna weaker than another.  A hand on a handset also
+covers some of its antennas, which then receive less from every direction.
+Here every UT port is one antenna of the handset; the hand covers
+``covered[0]`` of them in portrait mode (one hand) and ``covered[1]`` in
+landscape mode (two hands), picked at random per UT, and a covered antenna
+loses ``hand_loss_db`` in power: its row of every channel matrix, serving
+and interfering, is scaled, and so is the interference of the cells that
+are modelled as white noise, while the receiver's thermal noise is not
+(``port_gain``).  Cell selection and the coupling gain are those of an
+uncovered antenna.  The loss is a number to choose, not a measured one.
 """
 
 from __future__ import annotations
@@ -44,13 +57,29 @@ class SelfBlocking:
     mode: np.ndarray            # (U,) PORTRAIT / LANDSCAPE
     bearing_deg: np.ndarray     # (U,) UT orientation Omega_UT,alpha [deg]
     loss_db: float = 30.0
+    # per-antenna hand loss: (U, ports) power gain of every UT port, 1 or
+    # 10^(-hand_loss_db / 10); None: no hand loss
+    port_gain: np.ndarray | None = None
 
 
 def draw_self_blocking(n_ue: int, landscape_ratio: float, loss_db: float,
-                       rng) -> SelfBlocking:
+                       rng, n_ports: int = 0, hand_loss_db: float = 0.0,
+                       covered=(1, 2)) -> SelfBlocking:
+    """Grip mode and orientation of every UT and, with ``hand_loss_db`` > 0,
+    the antennas its hand covers: ``covered[mode]`` of the ``n_ports`` UT
+    ports (at most all), every subset equally likely.  The antennas are
+    drawn last, so mode and orientation are the same with and without them."""
     mode = np.where(rng.random(n_ue) < landscape_ratio, LANDSCAPE, PORTRAIT)
-    return SelfBlocking(mode=mode, bearing_deg=rng.uniform(0.0, 360.0, n_ue),
-                        loss_db=float(loss_db))
+    bearing = rng.uniform(0.0, 360.0, n_ue)
+    port_gain = None
+    if hand_loss_db > 0:
+        if n_ports < 1:
+            raise ValueError("the hand loss needs the number of UT ports")
+        rank = np.argsort(np.argsort(rng.random((n_ue, n_ports)), axis=1), axis=1)
+        k = np.minimum(np.asarray(covered)[mode], n_ports)            # (U,)
+        port_gain = np.where(rank < k[:, None], 10 ** (-hand_loss_db / 10), 1.0)
+    return SelfBlocking(mode=mode, bearing_deg=bearing, loss_db=float(loss_db),
+                        port_gain=port_gain)
 
 
 def in_region(mode, bearing_deg, aoa_deg, zoa_deg) -> np.ndarray:
@@ -75,7 +104,8 @@ def apply_self_blocking(cl: Clusters, sb: SelfBlocking, ues=None) -> Clusters:
     hit = in_region(mode, rot, cl.aoa_c, cl.zoa_c)
     hit_los = in_region(mode, rot, cl.los_aoa, cl.los_zoa)
     return replace(cl, gain=np.where(hit, att, 1.0),
-                   los_gain=np.where(hit_los, att, 1.0), ue_bearing_deg=rot.astype(float))
+                   los_gain=np.where(hit_los, att, 1.0), ue_bearing_deg=rot.astype(float),
+                   port_gain=None if sb.port_gain is None else sb.port_gain[ues])
 
 
 def blocked_power_fraction(cl: Clusters) -> np.ndarray:

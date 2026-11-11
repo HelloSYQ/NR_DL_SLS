@@ -65,6 +65,7 @@ class Clusters:
     gain: np.ndarray | None = None      # (L, N) cluster power factor
     los_gain: np.ndarray | None = None  # (L,) LOS-ray power factor
     ue_bearing_deg: np.ndarray | None = None    # (L,) UT orientation (about z)
+    port_gain: np.ndarray | None = None  # (L, U ports) hand loss per UT antenna (power)
 
 
 def _wrap_zenith(z):

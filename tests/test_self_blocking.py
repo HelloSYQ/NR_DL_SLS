@@ -194,3 +194,90 @@ def test_ftp_run_with_the_grip_keeps_the_files():
     assert b.files_counted == a.files_counted and not _same(a, b)
     off = dataclasses.replace(cfg, ue_self_blocking=False, self_blocking_db=12.0)
     assert _same(a, run_full_buffer_drop(off, fb, np.random.default_rng(7)))
+
+
+# --- per-antenna hand loss (hand_loss_db; not in TR 38.901) -------------------
+def test_hand_covers_one_antenna_in_portrait_and_two_in_landscape():
+    a = draw_self_blocking(4000, 0.5, 30.0, np.random.default_rng(4))
+    b = draw_self_blocking(4000, 0.5, 30.0, np.random.default_rng(4), n_ports=4,
+                           hand_loss_db=6.0)
+    # mode and orientation are those without the hand loss
+    assert a.port_gain is None and b.port_gain.shape == (4000, 4)
+    assert np.array_equal(a.mode, b.mode) and np.array_equal(a.bearing_deg, b.bearing_deg)
+    att = 10 ** -0.6
+    assert set(np.unique(b.port_gain)) == {att, 1.0}
+    n_cov = np.sum(b.port_gain < 1, axis=1)
+    assert np.all(n_cov[b.mode == PORTRAIT] == 1) and np.all(n_cov[b.mode == LANDSCAPE] == 2)
+    # every antenna is covered equally often: 1/4 (portrait), 2/4 (landscape)
+    assert np.allclose(np.mean(b.port_gain[b.mode == PORTRAIT] < 1, axis=0), 0.25, atol=0.04)
+    assert np.allclose(np.mean(b.port_gain[b.mode == LANDSCAPE] < 1, axis=0), 0.5, atol=0.04)
+    # other counts; never more than the UT has antennas
+    c = draw_self_blocking(500, 0.5, 30.0, np.random.default_rng(4), n_ports=2,
+                           hand_loss_db=3.0, covered=(0, 3))
+    n_cov = np.sum(c.port_gain < 1, axis=1)
+    assert np.all(n_cov[c.mode == PORTRAIT] == 0) and np.all(n_cov[c.mode == LANDSCAPE] == 2)
+    with pytest.raises(ValueError):
+        draw_self_blocking(5, 0.5, 30.0, np.random.default_rng(4), hand_loss_db=6.0)
+
+
+@pytest.mark.parametrize("cond", [LOS, NLOS])
+def test_hand_loss_scales_the_rows_of_the_channel(cond):
+    cl, rng = _clusters(cond, 6, 11)
+    sb0 = draw_self_blocking(6, 0.5, 30.0, np.random.default_rng(5))
+    sb = draw_self_blocking(6, 0.5, 30.0, np.random.default_rng(5), n_ports=4, hand_loss_db=6.0)
+    grip, hand = apply_self_blocking(cl, sb0), apply_self_blocking(cl, sb)
+    assert grip.port_gain is None and np.array_equal(hand.port_gain, sb.port_gain)
+    h0, h = _batch(grip), _batch(hand)
+    amp = np.sqrt(sb.port_gain)[:, None, :, None]                    # (L, 1, U, 1)
+    assert np.allclose(h, h0 * amp, rtol=1e-5, atol=1e-9)
+    # a covered antenna is 6 dB down, the others untouched
+    p0, p = np.sum(np.abs(h0) ** 2, axis=(1, 3)), np.sum(np.abs(h) ** 2, axis=(1, 3))
+    assert np.allclose(10 * np.log10(p / p0), 10 * np.log10(sb.port_gain), atol=1e-3)
+    # the single-link synthesis and a subset of the links agree
+    for l in range(6):
+        hl = link_channel(hand, l, BS, 0.0, UE, F_HZ, [0.01], velocity_mps=V,
+                          wavelength_m=LAM, d3d_m=100.0)[0]
+        assert _rel(hl, h[l]) < 1e-4
+    sub = subset_clusters(hand, np.array([4, 1]))
+    assert np.array_equal(sub.port_gain, sb.port_gain[[4, 1]])
+    assert concat_clusters([sub, sub]).port_gain.shape == (4, 4)
+    # port-0 RSRP (cell selection, coupling gain) is that of an uncovered antenna
+    port0 = lambda a, z: BSAntenna(BS).port0_field(a, z, 0.0)
+    assert np.array_equal(multipath_gain(hand, port0, 2), multipath_gain(grip, port0, 2))
+
+
+def test_hand_loss_in_a_drop_and_in_the_system():
+    cfg = _cfg(ue_self_blocking=True)
+    a = generate_drop(cfg, np.random.default_rng(2), keep_clusters=True)
+    b = generate_drop(dataclasses.replace(cfg, hand_loss_db=6.0), np.random.default_rng(2),
+                      keep_clusters=True)
+    # the drop of the grip, with the covered antennas on top
+    assert a.self_blocking.port_gain is None and b.self_blocking.port_gain.shape == (b.ues.n, 4)
+    assert np.array_equal(a.coupling_gain_db, b.coupling_gain_db)
+    assert np.array_equal(a.serving_cell, b.serving_cell)
+    assert np.array_equal(a.self_blocking.mode, b.self_blocking.mode)
+    for ca, cb in zip(a.clusters, b.clusters):
+        assert np.array_equal(ca.gain, cb.gain) and ca.port_gain is None
+        assert np.array_equal(cb.port_gain, b.self_blocking.port_gain)
+    with pytest.raises(ValueError, match="ue_self_blocking"):
+        _cfg(hand_loss_db=6.0)
+    with pytest.raises(ValueError, match="hand_loss_db"):
+        _cfg(ue_self_blocking=True, hand_loss_db=-1.0)
+    with pytest.raises(ValueError, match="hand_covered_antennas"):
+        _cfg(ue_self_blocking=True, hand_covered_antennas=(1,))
+    # system run: the same files; no hand loss is the grip run exactly
+    cfg, fb = _ftp3(ftp_rate_per_ue=12.0)
+    grip = dataclasses.replace(cfg, ue_self_blocking=True)
+    g = run_full_buffer_drop(grip, fb, np.random.default_rng(7))
+    h = run_full_buffer_drop(dataclasses.replace(grip, hand_loss_db=10.0), fb,
+                             np.random.default_rng(7))
+    assert h.files_counted == g.files_counted and not _same(g, h)
+    z = run_full_buffer_drop(dataclasses.replace(grip, hand_loss_db=0.0,
+                                                 hand_covered_antennas=(3, 4)), fb,
+                             np.random.default_rng(7))
+    assert _same(g, z)
+    # two of the four antennas 15 dB down: fewer layers
+    h2 = run_full_buffer_drop(dataclasses.replace(grip, hand_loss_db=15.0,
+                                                  hand_covered_antennas=(2, 2)), fb,
+                              np.random.default_rng(7))
+    assert h2.mean_rank < g.mean_rank

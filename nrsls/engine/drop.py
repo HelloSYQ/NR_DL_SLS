@@ -138,7 +138,9 @@ def generate_drop(cfg: ScenarioConfig, rng, keep_clusters: bool = False) -> Larg
     # --- UT grip (self-blocking): a child stream, so the rest of the drop
     # is the same with and without it (spawning does not advance rng) ---
     sb = (draw_self_blocking(n_ue, cfg.self_blocking_landscape_ratio,
-                             cfg.self_blocking_db, rng.spawn(1)[0])
+                             cfg.self_blocking_db, rng.spawn(1)[0],
+                             n_ports=cfg.ue_antenna.n_ports, hand_loss_db=cfg.hand_loss_db,
+                             covered=cfg.hand_covered_antennas)
           if cfg.ue_self_blocking else None)
 
     # --- per-cell port-0 gain toward every UT ---

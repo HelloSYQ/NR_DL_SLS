@@ -157,6 +157,8 @@ def link_channel(cl: Clusters, link: int, bs_cfg: BSAntennaConfig,
             fdl = _dir_cosines(a_a, z_a) @ np.asarray(velocity_mps, float) / wavelength_m
             hl = hl * np.exp(-2j * np.pi * d3d_m / wavelength_m) * np.exp(2j * np.pi * fdl * t)
             h = h + np.sqrt(k / (k + 1)) * hl[None]
+        if cl.port_gain is not None:                                # hand loss per antenna
+            h = h * np.sqrt(cl.port_gain[link])[None, :, None]
         out.append(h)
     return np.stack(out)                                            # (T, F, U, S)
 
@@ -182,7 +184,8 @@ def subset_clusters(cl: Clusters, idx, dtype=np.float32) -> Clusters:
         los_aoa=cl.los_aoa[idx], los_zoa=cl.los_zoa[idx], c_ds_s=cl.c_ds_s[idx],
         **{f: None if getattr(cl, f) is None else getattr(cl, f)[idx].astype(t)
            for f, t in (("aoa_c", dtype), ("zoa_c", dtype), ("gain", dtype),
-                        ("los_gain", float), ("ue_bearing_deg", float))})
+                        ("los_gain", float), ("ue_bearing_deg", float),
+                        ("port_gain", float))})
 
 
 def concat_clusters(parts) -> Clusters:
@@ -314,4 +317,6 @@ def channel_batch(cl: Clusters, bearing_deg, bs_cfg: BSAntennaConfig,
         hl = hl * np.exp(-2j * np.pi * d3d_m[l] / wavelength_m + 2j * np.pi * fdl * t_s)
         k = cl.k_r[l]
         h[l] += np.sqrt(k / (k + 1)) * hl[None]
+    if cl.port_gain is not None:                                     # hand loss per antenna
+        h = h * np.sqrt(cl.port_gain)[:, None, :, None]
     return h.astype(np.complex64)
