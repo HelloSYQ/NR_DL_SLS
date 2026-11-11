@@ -32,6 +32,16 @@ def mmse_sinr(g: np.ndarray) -> np.ndarray:
     return np.maximum(1.0 / np.maximum(d, 1e-12) - 1.0, 1e-9)
 
 
+def evm_limited(sinr: np.ndarray, evm_percent: float) -> np.ndarray:
+    """Post-equaliser SINR (linear) with an error-vector magnitude of
+    ``evm_percent``: the EVM adds distortion of EVM^2 times the signal power
+    on every layer, SINR' = 1 / (1 / SINR + EVM^2), a ceiling of 1 / EVM^2
+    (32 dB at 2.5 %, 29.1 dB at 3.5 %).  0 leaves the SINR as it is."""
+    if evm_percent <= 0:
+        return sinr
+    return 1.0 / (1.0 / sinr + (evm_percent / 100.0) ** 2)
+
+
 def capacity(g: np.ndarray) -> np.ndarray:
     """log2 det(I + G^H G) of whitened effective channels G (..., U, r)."""
     r = g.shape[-1]

@@ -34,6 +34,12 @@ retransmission (``harq_refill='always'``).  The screening variants of
             priority but takes the best free RBGs for the UT's current report
             instead of its own; NR runs with it too
 
+  *-warmfast-pr-rtt4  the fair MMSE-IRC comparison of 2026-11-12: warm + fast
+            start, one OLLA loop per transmission rank (and codeword) for
+            every scheme, NR too (olla_per_rank; NR's single loop for all
+            ranks was what the multi-codeword schemes gained on), and a HARQ
+            round trip of 4 slots, 2 ms at 30 kHz, instead of 8
+
 Cases, both with CSI every 20 ms that is 4 ms old when used:
 
   etype2_20ms   Rel-16 eType-II codebook (parameter combination 6)
@@ -58,14 +64,27 @@ still open at the end count with the upper bound size / (end - arrival).
         --drops 2 --first-drop 3 --log results/part.jsonl               # one slice
     python examples/cw2lm_ftp_eval.py --summary-only --log a.jsonl,b.jsonl
 
-Set-ups (``--setup``), both Dense Urban-eMBB A at 4 GHz FDD with 52 PRB:
+Set-ups (``--setup``), all Dense Urban-eMBB A at 4 GHz FDD:
 
-  10mhz   15 kHz SCS, 10 MHz, 41 dBm (M.2412's 44 dBm per 20 MHz scaled to
-          10 MHz); rates in results/cw2lm_ftp_rates.json, summary in
-          results/cw2lm_ftp.json
-  20mhz   30 kHz SCS, 20 MHz channel, 44 dBm; rates in
+  10mhz   15 kHz SCS, 10 MHz (52 PRB), 41 dBm (M.2412's 44 dBm per 20 MHz
+          scaled to 10 MHz); rates in results/cw2lm_ftp_rates.json, summary
+          in results/cw2lm_ftp.json
+  20mhz   30 kHz SCS, 20 MHz channel (52 PRB), 44 dBm; rates in
           results/cw2lm_ftp_rates_20mhz.json, summary in
           results/cw2lm_ftp_20mhz.json
+  20mhz-ftp1          the same carrier with FTP model 1 (below)
+  50mhz-ftp1          30 kHz SCS, 50 MHz channel (133 PRB, TS 38.101-1),
+                      48 dBm (the same power per Hz), 8-PRB RBGs and
+                      sub-bands (TS 38.214 for 73-144 PRB), FTP model 1
+  20mhz-ftp1-1024qam  20mhz-ftp1 with MCS table 4 (1024QAM, TS 38.214
+                      Table 5.1.3.1-4), CQI table 4 and an EVM of 2.5 %
+                      (FullBufferConfig.evm_percent: an SINR ceiling of 32 dB)
+  50mhz-ftp1-1024qam  50mhz-ftp1 with the same
+
+A load is the RU of NR with 256QAM on that carrier: the 1024QAM set-ups use
+the arrival rates of their 256QAM set-up, so 256QAM and 1024QAM runs of a
+case, load and drop see the same users and files and can be compared
+directly (``--rates`` and ``--calibrate`` give a set-up its own rates).
 
 CSI period (20 ms), CSI delay (4 ms) and channel update (2 ms) are times and
 are converted to slots of the set-up's numerology; ``--slots``, ``--warmup``,
@@ -116,6 +135,8 @@ VARIANTS = {"irc-olla": dict(_LEGACY), "sic-olla": dict(_SIC, **_LEGACY),
             "irc-fix-fast": dict(_FAST), "irc-fix-fastw": dict(_FASTW),
             "irc-fix-warmfast": dict(_FAST, olla_warm_samples=20),
             "sic-fix-warmfast": dict(_SIC, **_FAST, olla_warm_samples=20),
+            "irc-fix-warmfast-pr-rtt4": dict(_FAST, olla_warm_samples=20, olla_per_rank=True,
+                                             harq_rtt_slots=4),
             "irc-fix-warmfast-async": dict(_FAST, olla_warm_samples=20, harq_mode="async"),
             "sic-fix-warmfast-async": dict(_SIC, **_FAST, olla_warm_samples=20,
                                            harq_mode="async")}
@@ -167,6 +188,34 @@ SETUPS = {
                        carrier="4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB)",
                        power="44 dBm per 20 MHz"),
 }
+# 50 MHz at 30 kHz: 133 PRB (TS 38.101-1 Table 5.3.2-1), M.2412's 44 dBm per
+# 20 MHz at the same power per Hz (48 dBm), RBG and CSI sub-band of 8 PRB
+# (TS 38.214 Tables 5.1.2.2.1-1 and 5.2.1.4-2 for 73-144 PRB)
+_PRESET_50MHZ = dict(carrier=CarrierConfig(mu=1, n_size_grid=133), bs_tx_power_dbm=48.0,
+                     channel_bandwidth_hz=50e6, ue_per_cell=20)
+# 1024QAM: MCS / CQI table 4 and the EVM a BS may have with it (TS 38.104)
+_FB_1024QAM = dict(mcs_table=4, evm_percent=2.5)
+
+
+def _ftp1_setup(tag: str, preset: dict, cal_rates: tuple, carrier: str, power: str,
+                fb: dict, rates_tag: str | None = None) -> dict:
+    return dict(preset=preset, traffic="ftp1", fb=fb, cal_rates=cal_rates,
+                rates=os.path.join(OUT, f"cw2lm_ftp1_rates_{rates_tag or tag}.json"),
+                out=os.path.join(OUT, f"cw2lm_ftp1_{tag}.json"), carrier=carrier, power=power)
+
+
+SETUPS["50mhz-ftp1"] = _ftp1_setup(
+    "50mhz", _PRESET_50MHZ, (12.5, 20.0, 27.5, 35.0, 42.5, 50.0),
+    "4 GHz FDD, 30 kHz SCS, 50 MHz channel (133 PRB)", "48 dBm per 50 MHz",
+    dict(rbg_size=8))
+SETUPS["20mhz-ftp1-1024qam"] = _ftp1_setup(
+    "20mhz_1024qam", SETUPS["20mhz-ftp1"]["preset"], (5.0, 8.0, 11.0, 14.0, 17.0, 20.0),
+    "4 GHz FDD, 30 kHz SCS, 20 MHz channel (52 PRB), 1024QAM, EVM 2.5 %",
+    "44 dBm per 20 MHz", dict(_FB_1024QAM), rates_tag="20mhz")
+SETUPS["50mhz-ftp1-1024qam"] = _ftp1_setup(
+    "50mhz_1024qam", _PRESET_50MHZ, (12.5, 20.0, 27.5, 35.0, 42.5, 50.0),
+    "4 GHz FDD, 30 kHz SCS, 50 MHz channel (133 PRB), 1024QAM, EVM 2.5 %",
+    "48 dBm per 50 MHz", dict(_FB_1024QAM, rbg_size=8), rates_tag="50mhz")
 CAL_RATES = SETUPS[DEFAULT_SETUP]["cal_rates"]
 
 
@@ -181,14 +230,16 @@ def _slots(setup: str, seconds: float) -> int:
 
 def fb_config(case: str, variant: str, scheme: str, rate: float, slots: int, warmup: int,
               drain: int, setup: str = DEFAULT_SETUP) -> FullBufferConfig:
-    extra = VARIANTS[variant]
-    return FullBufferConfig(
+    kw = dict(
         n_slots=slots, warmup_slots=warmup, codebook=CASES[case], max_rank=4, rbg_size=4,
         channel_update_slots=_slots(setup, CHANNEL_UPDATE_S),
         csi_period_slots=_slots(setup, CSI_PERIOD_S),
         csi_delay_slots=_slots(setup, CSI_DELAY_S), pdcch_symbols=2,
         overhead_re_per_prb=9, harq_adaptive=True, cw_mapping=scheme,
-        ftp_file_bytes=FILE_BYTES, ftp_drain_slots=drain, **_traffic(setup, rate), **extra)
+        ftp_file_bytes=FILE_BYTES, ftp_drain_slots=drain, **_traffic(setup, rate))
+    kw.update(SETUPS[setup].get("fb", {}))      # the set-up's own RBG size, MCS table, EVM
+    kw.update(VARIANTS[variant])
+    return FullBufferConfig(**kw)
 
 
 def _traffic(setup: str, rate: float) -> dict:
@@ -217,6 +268,7 @@ def _worker(task):
                 bler_first=r.bler_first, bler_first_cw=list(r.bler_first_cw),
                 mean_rank=r.mean_rank, rank_hist=list(r.rank_hist),
                 mean_codewords=r.mean_codewords, mean_mcs=r.mean_mcs,
+                modulation_share=[round(x, 4) for x in r.modulation_share],
                 retx_rbg_fraction=r.retx_rbg_fraction,
                 retx_moved_fraction=r.retx_moved_fraction,
                 mean_active_ues=round(r.mean_active_ues, 3),
@@ -330,6 +382,9 @@ def _kpis(recs: list, drain: int | None = None) -> dict:
                               for k in range(max(len(r["bler_first_cw"]) for r in recs))],
             "mean_rank": float(np.mean([r["mean_rank"] for r in recs])),
             "rank_hist": np.mean([r["rank_hist"] for r in recs], axis=0).tolist(),
+            # QPSK / 16QAM / 64QAM / 256QAM / 1024QAM shares of the new TBs (newer logs)
+            "modulation_share": (np.mean([r["modulation_share"] for r in recs], axis=0).tolist()
+                                 if all("modulation_share" in r for r in recs) else None),
             "retx_rbg_fraction": float(np.mean([r["retx_rbg_fraction"] for r in recs])),
             "retx_moved_fraction": float(np.mean([r.get("retx_moved_fraction", 0.0)
                                                   for r in recs])),

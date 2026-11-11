@@ -87,6 +87,13 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   [`docs/cw2lm-ftp-20mhz.md`](docs/cw2lm-ftp-20mhz.md) and
   `6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx`.
 
+- **1024QAM and a 50 MHz carrier** (2026-11-11). `FullBufferConfig.mcs_table = 4` is
+  the Rel-17 1024QAM table (TS 38.214 Table 5.1.3.1-4) and `evm_percent` limits
+  every SINR to 1 / EVM²; the study script has set-ups `50mhz-ftp1` (133 PRB,
+  48 dBm), `20mhz-ftp1-1024qam` and `50mhz-ftp1-1024qam`. A first look at 20 %
+  load: 1024QAM adds 3–7 % mean UPT with ideal hardware and nothing at the
+  2.5 % EVM a BS is allowed. See [`docs/qam1024-50mhz.md`](docs/qam1024-50mhz.md).
+
 ## Guided tour
 
 [`notebooks/NR_System_Level_Simulator_Guide.ipynb`](notebooks/NR_System_Level_Simulator_Guide.ipynb)

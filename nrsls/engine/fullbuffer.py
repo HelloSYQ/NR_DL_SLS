@@ -51,6 +51,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from nrdlsim import mcs_tables
 from nrdlsim import resource_grid as rg
 from nrdlsim import tbs as tbs_mod
 from nrdlsim.config import PDSCHConfig
@@ -62,7 +63,7 @@ from ..phy.sinr import whitening
 from ..propagation.fast_fading import channel_batch, concat_clusters, subset_clusters
 from .drop import generate_drop
 from ..mac.mu_mimo import greedy_pairing, unit_columns
-from ..phy.sinr import mmse_sinr
+from ..phy.sinr import evm_limited, mmse_sinr
 from .link import (decode_tb, harq_units, ideal_mcs, make_tb, new_txs, retransmission,
                    sic_layer_sinr, tb_precoder)
 
@@ -83,7 +84,16 @@ class FullBufferConfig:
     type1_subband_pmi: bool = True    # Type-I i2 per sub-band (else wideband)
     pmi_score_step: int = 4           # frequency subsampling of PMI scoring
     max_rank: int = 4
+    # 1: 64QAM, 2: 256QAM, 4: 1024QAM (TS 38.214 Table 5.1.3.1-4, the Rel-17
+    # table of mac/mcs_table4.py), each with its CQI table
     mcs_table: int = 2
+    # error-vector magnitude [%] of the link (transmitter and receiver
+    # impairments together): every post-equaliser SINR, in the CSI and in the
+    # decoding, becomes 1 / (1 / SINR + EVM^2), at most 1 / EVM^2.  0: none,
+    # SINRs are unbounded.  TS 38.104 lets a BS have 3.5 % with 256QAM and
+    # 2.5 % with 1024QAM (ceilings of 29.1 and 32.0 dB); 1024QAM needs 28 to
+    # 32 dB, so evaluate it with an EVM
+    evm_percent: float = 0.0
     target_bler: float = 0.1
     olla_step_db: float = 0.5
     # OLLA fast start (mac/link_adaptation.py): the first olla_fast_samples
@@ -215,6 +225,8 @@ class FullBufferResult:
     mean_codewords: float = 1.0       # codewords per new transmission
     rank_hist: tuple = ()             # share of new transmissions at rank 1..4
     bler_first_cw: tuple = ()         # first-transmission BLER per codeword index
+    # share of first-transmission TBs with QPSK / 16QAM / 64QAM / 256QAM / 1024QAM
+    modulation_share: tuple = ()
     # FTP: used RBG-slots / all RBG-slots after warm-up (1 with full buffer),
     # the UPT (size / (completion - arrival)) and UT of every file that
     # arrived in the measurement window and completed, and how many arrived
@@ -273,11 +285,12 @@ def _async_rbgs(unit: list, free: np.ndarray, cur, rbg_sig: list):
     return rb if free[rb].all() else None
 
 
-def _rbg_bits(cur, rb_per_rbg, n_re):
+def _rbg_bits(cur, rb_per_rbg, n_re, se_max=7.4):
     """Bits per RBG a UT's report would carry, for buffer-aware scheduling:
-    Shannon on the CQI SINR of each layer, capped at 7.4 bit/RE (256QAM)."""
+    Shannon on the CQI SINR of each layer, capped at ``se_max`` bit/RE (7.4
+    with 256QAM, 9.26 with 1024QAM)."""
     rep, s = cur[0], cur[1]
-    se = lambda x: np.minimum(np.log2(1 + 10 ** (x / 10)), 7.4)
+    se = lambda x: np.minimum(np.log2(1 + 10 ** (x / 10)), se_max)
     if s.ndim == 1:
         per_re = rep.rank * se(s)
     else:
@@ -427,6 +440,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
             or fb.olla_warm_samples < 0):
         raise ValueError("olla_fast_gain must be > 0, olla_fast_samples, olla_fast_min_cw "
                          "and olla_warm_samples >= 0")
+    if fb.evm_percent < 0:
+        raise ValueError("evm_percent must be >= 0")
     if fb.traffic not in ("full_buffer", "ftp3", "ftp1"):
         raise ValueError("traffic must be 'full_buffer', 'ftp3' or 'ftp1'")
     ftp = fb.traffic in ("ftp3", "ftp1")
@@ -529,6 +544,10 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     # + 1 additional pair, 2 CDM groups without data -> 4 x 12 REs per RB
     # pair, 2 CDM groups without data -> 4 x 12 DM-RS REs per RB
     n_re_dd = tbs_mod.re_per_rb(pdsch.num_symbols, 4 * 12, pdsch.n_oh)
+    # highest spectral efficiency per layer of the MCS table (buffer estimate);
+    # 7.4 for the tables up to 256QAM, as before 1024QAM was added
+    se_max = max(7.4, mcs_tables.get_mcs(mcs_tables.num_mcs(fb.mcs_table) - 1,
+                                         fb.mcs_table).spectral_efficiency)
     n_lay = max(4, fb.mu_max_layers) if fb.mu_mimo else 4
     first_f = np.argmax(rbg_mask, axis=1)                   # first point of each RBG
     mu_stats = {"ues": [], "layers": []}
@@ -542,7 +561,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                         etype2_combo=fb.etype2_combo,
                         pmi_subband=fb.type1_subband_pmi,
                         max_codewords=max_cw, sic=sic, cw_mapping=fb.cw_mapping,
-                        ri_sic_propagation=fb.ri_sic_propagation)
+                        ri_sic_propagation=fb.ri_sic_propagation,
+                        evm_percent=fb.evm_percent)
     pending = [[] for _ in range(n_ue)]                   # (avail, report, sinr_sb)
     current = [None] * n_ue
     pf_avg = np.full(n_ue, 1.0)
@@ -550,6 +570,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
     bits = np.zeros(n_ue)
     n_first = n_nack = 0
     rank_log, mcs_log, bits_log, ncw_log = [], [], [], []
+    qm_count = np.zeros(11, int)                          # first-transmission TBs by Qm
     cw_first, cw_nack = np.zeros(4, int), np.zeros(4, int)
     n_tx = 0                                              # transmission ids
     ue_of_cell = [np.nonzero(d.serving_cell == c)[0] for c in range(lay.n_cells)]
@@ -702,7 +723,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                     # PF per RBG among the UTs whose buffer the RBGs given
                     # so far do not yet cover (report-based estimate)
                     need = unsched[cand].astype(float)
-                    est = np.array([_rbg_bits(current[u], rb_per_rbg, n_re) for u in cand])
+                    est = np.array([_rbg_bits(current[u], rb_per_rbg, n_re, se_max)
+                                    for u in cand])
                     owner = np.full(n_rbg, -1)
                     for b in np.nonzero(free)[0]:
                         if not (need > 0).any():
@@ -835,6 +857,10 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                 if first and tb.get("mu") and slot >= fb.warmup_slots:
                     act = 10 * np.log10(max(2 ** np.mean(np.log2(1 + sinr)) - 1, 1e-6))
                     diag["err"].append(tb["est_db"] - act)
+            if fb.evm_percent > 0:
+                if sinr is None:
+                    sinr = mmse_sinr(hw[u, fm] @ tb_precoder(tb, fm, rbg_f))
+                sinr = evm_limited(sinr, fb.evm_percent)
             if fb.ideal_la and first:
                 if sinr is None:
                     sinr = mmse_sinr(hw[u, fm] @ tb_precoder(tb, fm, rbg_f))
@@ -845,7 +871,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                     # propagation hits this reference too
                     g, cancelled, earlier = tx_sic[tb["tx"]]
                     if len(cancelled) < len(earlier):
-                        plan = sic_layer_sinr(g, tb["layers"], earlier)
+                        plan = evm_limited(sic_layer_sinr(g, tb["layers"], earlier),
+                                           fb.evm_percent)
                 ideal_mcs(tb, plan, nrb_f[fm], rb_per_rbg, n_re, fb.mcs_table,
                           fb.target_bler)
             propagated = ("tx" in tb and sic
@@ -871,6 +898,7 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
                         rank_log.append(tb["rank"])
                         ncw_log.append(len(tb.get("groups", (0,))))
                     mcs_log.append(tb["info"].index)
+                    qm_count[tb["info"].modulation_order] += 1
             if ok:
                 if slot >= fb.warmup_slots:
                     bits[u] += tb.get("payload", tb["bits"])
@@ -941,6 +969,8 @@ def run_full_buffer_drop(cfg: ScenarioConfig, fb: FullBufferConfig, rng
         rank_hist=tuple(float(np.mean(np.array(rank_log) == r)) if rank_log else 0.0
                         for r in range(1, 5)),
         bler_first_cw=tuple(float(n / f) for n, f in zip(cw_nack, cw_first) if f),
+        modulation_share=tuple(float(qm_count[q] / max(qm_count.sum(), 1))
+                               for q in (2, 4, 6, 8, 10)),
         resource_utilization=ru_used / max(ru_all, 1) if ftp else 1.0,
         file_upt_bps=np.array(upt) if ftp else np.zeros(0),
         file_ue=np.array(upt_ue, int) if ftp else np.zeros(0, int),

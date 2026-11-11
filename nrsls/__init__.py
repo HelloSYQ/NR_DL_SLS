@@ -16,6 +16,7 @@ from .config.scenario import (ScenarioConfig, BSAntennaConfig, UEAntenna,
                               get_preset, PRESETS)
 from .engine.drop import generate_drop, LargeScaleDrop
 from .engine.simulator import run_large_scale, LargeScaleStats
+from .mac import mcs_table4 as _mcs_table4      # mcs_table=4: Rel-17 1024QAM table
 
 __all__ = [
     "ScenarioConfig", "BSAntennaConfig", "UEAntenna", "get_preset", "PRESETS",

@@ -56,6 +56,8 @@ def run_single_link(h_at: Callable[[int], np.ndarray], n_rb: int, scs_hz: float,
 
     pdsch = PDSCHConfig(num_rb=n_rb)
     n_re = tbs_mod.re_per_rb(pdsch.num_symbols, rg.dmrs_re_per_rb(pdsch), pdsch.n_oh)
+    if fb.evm_percent > 0:
+        raise ValueError("evm_percent is not modelled in the single-link harness")
     la = LinkAdaptation(1, fb.mcs_table, fb.target_bler, n_re, fb.olla_step_db)
     proc = None
 
