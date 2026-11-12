@@ -245,6 +245,13 @@ SETUPS["20mhz-ftp1-grip-hand"] = dict(
     SETUPS["20mhz-ftp1-grip"],
     preset=dict(SETUPS["20mhz-ftp1-grip"]["preset"], hand_loss_db=HAND_LOSS_DB),
     out=os.path.join(OUT, "cw2lm_ftp1_grip_hand_20mhz.json"))
+# the final set-up of the study: grip and hand loss, with arrival rates
+# calibrated for the fair baseline itself (--calibrate --cal-variant
+# irc-fix-warmfast-pr-rtt4), so that NR sits at 20 / 50 / 70 % RU
+SETUPS["20mhz-ftp1-grip-hand-fair"] = dict(
+    SETUPS["20mhz-ftp1-grip-hand"],
+    rates=os.path.join(OUT, "cw2lm_ftp1_grip_hand_fair_rates_20mhz.json"),
+    out=os.path.join(OUT, "cw2lm_ftp1_grip_hand_fair_20mhz.json"))
 CAL_RATES = SETUPS[DEFAULT_SETUP]["cal_rates"]
 
 
@@ -499,6 +506,8 @@ def main() -> int:
                     help="NR at several arrival rates on --cal-drops drops; writes --rates")
     ap.add_argument("--cal-slots", type=int, default=900)
     ap.add_argument("--cal-drops", type=int, default=1)
+    ap.add_argument("--cal-variant", default="irc-olla", choices=list(VARIANTS),
+                    help="variant NR runs with in the calibration")
     ap.add_argument("--cal-rates", default=None,
                     help="comma-separated files/s per UT (default: the set-up's)")
     ap.add_argument("--rates", default=None, help="default: the set-up's rates file")
@@ -521,7 +530,7 @@ def main() -> int:
     if args.calibrate:
         cal = ([float(x) for x in args.cal_rates.split(",")] if args.cal_rates
                else SETUPS[setup]["cal_rates"])
-        tasks = [(c, "irc-olla", "nr", "cal", r, d, args.cal_slots, args.warmup, 0, args.seed,
+        tasks = [(c, args.cal_variant, "nr", "cal", r, d, args.cal_slots, args.warmup, 0, args.seed,
                   setup) for c in cases for r in cal for d in range(args.cal_drops)]
         run_tasks(tasks, args.jobs, log_out, log)
         rates = calibrate(log, setup=setup)
