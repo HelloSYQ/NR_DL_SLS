@@ -62,6 +62,29 @@ Set-up `20mhz-ftp1-grip-hand` of `examples/cw2lm_ftp_eval.py`: the grip set-up `
 
 NR gives up rank 4 for some users when the fourth layer is weaker; the multi-codeword schemes keep it, with a lower MCS on the weak codeword. On these two drops that is worth about a point of mean UPT to them.
 
+## Final evaluation (2026-11-12)
+
+Set-up `20mhz-ftp1-grip-hand-fair`: the grip with the 6 dB hand loss, the fair baseline (variant `irc-fix-warmfast-pr-rtt4`: one OLLA loop per rank and codeword for every scheme, 4-slot HARQ round trip), and arrival rates calibrated with NR in exactly this configuration (`--calibrate --cal-variant irc-fix-warmfast-pr-rtt4`, drops 0 and 1, 2300 slots: `results/cw2lm_ftp1_grip_hand_fair_rates_20mhz.json`). MMSE-IRC, 10 drops, 180 runs in `results/ftp1_final/`, summary in `results/cw2lm_ftp1_grip_hand_fair_20mhz.json`. The report is [`CW2L_FTP1_hand_grip_report.docx`](CW2L_FTP1_hand_grip_report.docx).
+
+Mean UPT gain over NR, ± the standard error of the 10 single-drop gains, and the drops above zero:
+
+| Precoding | Scheme | 20 % | 50 % | 70 % load |
+|---|---|---|---|---|
+| Sub-band SVD | LTE style | +2.0 ± 0.5 % (9 of 10) | +1.9 ± 0.3 % (10) | +2.3 ± 0.3 % (10) |
+| Sub-band SVD | 1 CW per layer | +2.2 ± 0.6 % (9) | +2.0 ± 0.5 % (9) | +2.4 ± 0.3 % (10) |
+| Wideband SVD | LTE style | +1.5 ± 0.4 % (10) | +1.5 ± 0.4 % (8) | +0.8 ± 0.4 % (7) |
+| Wideband SVD | 1 CW per layer | +1.8 ± 0.5 % (9) | +1.9 ± 0.4 % (10) | +0.8 ± 0.3 % (8) |
+
+- **Load.** NR's RU in these runs is 19 / 44–45 / 67 %: the 1000- and 2000-slot evaluation runs start from an empty system and land under the calibration's 20 / 50 / 70 %.
+- **Against no grip** (`results/cw2lm_ftp1_fair_20mhz.md`, at 17–18 / 44 / 65 % RU): the gain is higher in 8 of the 12 cells and lower in 4, by +0.35 points on average. The grip with a 6 dB hand loss does not change the picture.
+
+```bash
+python examples/cw2lm_ftp_eval.py --setup 20mhz-ftp1-grip-hand-fair --summary-only \
+    --log "$(ls results/ftp1_final/*.jsonl | paste -sd,)" --summary-drain 1000:300,2000:1000
+python examples/cw2lm_final_report.py        # results/cw2lm_final/report_data.json, gain.png
+node examples/cw2lm_final_report.js          # docs/CW2L_FTP1_hand_grip_report.docx (text: cw2lm_final_report_text.json)
+```
+
 ## Running it
 
 ```bash

@@ -87,6 +87,15 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   [`docs/cw2lm-ftp-20mhz.md`](docs/cw2lm-ftp-20mhz.md) and
   `6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx`.
 
+- **Final CW2L evaluation with the hand grip** (2026-11-12). The fair baseline with
+  TR 38.901 self-blocking and a 6 dB per-antenna hand loss, arrival rates
+  calibrated for it, MMSE-IRC, 10 drops: LTE style gains +2.0 / +1.9 / +2.3 %
+  and one codeword per layer +2.2 / +2.0 / +2.4 % mean UPT over NR at 20 / 50 /
+  70 % load with sub-band SVD (wideband SVD: +1.5 / +1.5 / +0.8 % and
+  +1.8 / +1.9 / +0.8 %). Report:
+  [`docs/CW2L_FTP1_hand_grip_report.docx`](docs/CW2L_FTP1_hand_grip_report.docx);
+  see also [`docs/hand-grip.md`](docs/hand-grip.md).
+
 - **Fair-baseline rerun of the FTP model 1 study** (2026-11-11). MMSE-IRC, 20 MHz,
   256QAM, 10 drops, with one OLLA loop per transmission rank for every scheme
   (NR too) and a 4-slot HARQ round trip (variant `irc-fix-warmfast-pr-rtt4`).

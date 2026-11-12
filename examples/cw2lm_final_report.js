@@ -23,7 +23,7 @@ const W = 9026;                         // A4 text width with 1 inch margins, DX
 const INK = "1A1A1A", MUTED = "555555", HEAD = "E8EEF7", LINE = "BFC5CE";
 const CASES = Object.keys(D.cases), LOADS = D.loads;
 const fmt = (x, n = 1) => x.toFixed(n).replace("-", "−");
-const sgn = (x, n = 1) => (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(n);
+const sgn = (x, n = 1) => { const t = Math.abs(x).toFixed(n); return (Number(t) === 0 ? "" : x > 0 ? "+" : "−") + t; };
 const G = (c, ld, s) => (D.grip[`${c}|${ld}`] || { schemes: {} }).schemes[s];
 const R = (c, ld, s) => (D.ref[`${c}|${ld}`] || { schemes: {} }).schemes[s];
 
@@ -36,7 +36,8 @@ function runs(text, opt = {}) {
 }
 const P = (text, opt = {}) => new Paragraph({
   children: runs(text, opt.run), spacing: { after: 120, line: 276 }, ...opt.par });
-const H1 = (t) => new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: t, font: FONT })] });
+const H1 = (t, brk) => new Paragraph({ heading: HeadingLevel.HEADING_1, pageBreakBefore: !!brk,
+  children: [new TextRun({ text: t, font: FONT })] });
 const H2 = (t) => new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun({ text: t, font: FONT })] });
 const B = (text) => new Paragraph({
   numbering: { reference: "bullets", level: 0 }, children: runs(text), spacing: { after: 80, line: 276 } });
@@ -121,7 +122,7 @@ function perDrop() {
       ...g.gain_drops.map((x) => sgn(x))]);
   }
   return table(["Precoding, load, scheme", ...[...Array(10).keys()].map((i) => `Drop ${i}`)], rows,
-    [30, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7], { size: 15 });
+    [38, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7], { size: 15 });
 }
 function rates() {
   const r = D.cw2lm_ftp1_grip_hand_fair_rates_20mhz;
@@ -137,7 +138,7 @@ const TABLES = { headline, percentiles, baseline, gripEffect, perDrop, rates };
 // --- document -------------------------------------------------------------
 const body = [];
 for (const blk of T.blocks) {
-  if (blk.h1) body.push(H1(blk.h1));
+  if (blk.h1) body.push(H1(blk.h1, blk.break));
   else if (blk.h2) body.push(H2(blk.h2));
   else if (blk.p) body.push(P(blk.p));
   else if (blk.b) blk.b.forEach((t) => body.push(B(t)));
