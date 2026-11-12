@@ -62,6 +62,7 @@ function table(head, rows, widths, opt = {}) {
     rows: [new TableRow({ tableHeader: true, cantSplit: true, children: head.map((t, i) => cell(t, i, true)) }),
       ...rows.map((r) => new TableRow({ cantSplit: true, children: r.map((t, i) => cell(t, i, false)) }))] });
 }
+const SHORT = (c) => D.cases[c].replace(" SVD", "");
 const SCH = { lte: "LTE style (Alt2)", per_layer: "1 CW per layer (Alt3)", nr: "NR (Alt1)" };
 
 // --- tables from the data -------------------------------------------------
@@ -79,22 +80,22 @@ function percentiles() {
   const rows = [];
   for (const c of CASES) for (const ld of LOADS) for (const s of ["lte", "per_layer"]) {
     const g = G(c, ld, s);
-    if (g) rows.push([D.cases[c], `${ld} %`, SCH[s], `${sgn(g.gain_mean)} %`, `${sgn(g.gain_p5)} %`,
+    if (g) rows.push([SHORT(c), `${ld} %`, SCH[s], `${sgn(g.gain_mean)} %`, `${sgn(g.gain_p5)} %`,
       `${sgn(g.gain_p95)} %`, `${sgn(g.drop_min)} to ${sgn(g.drop_max)} %`]);
   }
-  return table(["Precoding", "Load", "Scheme", "Mean UPT", "5th pct UPT", "95th pct UPT", "Single drops, mean UPT"],
+  return table(["Precoding (SVD)", "Load", "Scheme", "Mean UPT", "5th pct UPT", "95th pct UPT", "Single drops, mean UPT"],
     rows, [16, 9, 23, 12, 12, 12, 20], { left: [2] });
 }
 function baseline() {
   const rows = [];
   for (const c of CASES) for (const ld of LOADS) for (const s of ["nr", "lte", "per_layer"]) {
     const g = G(c, ld, s);
-    if (g) rows.push([D.cases[c], `${ld} %`, SCH[s], `${fmt(g.ru, 0)} %`,
+    if (g) rows.push([SHORT(c), `${ld} %`, SCH[s], `${fmt(g.ru, 0)} %`,
       `${fmt(g.upt_mean, 0)} / ${fmt(g.upt_p5, 0)} / ${fmt(g.upt_p95, 0)}`,
       g.bler_cw.map((x) => fmt(x, 0)).join(" / "), fmt(g.mean_rank, 2), `${fmt(g.rank_hist[3], 0)} %`,
       `${fmt(g.retx, 1)} %`]);
   }
-  return table(["Precoding", "Load", "Scheme", "RU", "UPT mean / 5th / 95th pct [Mbit/s]",
+  return table(["Precoding (SVD)", "Load", "Scheme", "RU", "UPT mean / 5th / 95th pct [Mbit/s]",
     "First-tx BLER per CW [%]", "Mean rank", "Rank-4 share", "Retx share of RBGs"],
   rows, [14, 8, 21, 7, 20, 17, 8, 9, 9], { left: [2], size: 16 });
 }
@@ -103,14 +104,14 @@ function gripEffect() {
   for (const c of CASES) for (const ld of LOADS) {
     const a = R(c, ld, "nr"), b = G(c, ld, "nr");
     if (!a || !b) continue;
-    const gg = (X, s) => { const g = X(c, ld, s); return g ? `${sgn(g.gain_mean)} %` : "—"; };
-    rows.push([D.cases[c], `${ld} %`, `${fmt(a.ru, 0)} → ${fmt(b.ru, 0)} %`,
+    const gg = (X, s) => { const g = X(c, ld, s); return g ? sgn(g.gain_mean) : "—"; };
+    rows.push([SHORT(c), `${ld} %`, `${fmt(a.ru, 0)} → ${fmt(b.ru, 0)}`,
       `${fmt(a.upt_mean, 0)} → ${fmt(b.upt_mean, 0)}`, `${fmt(a.mean_rank, 2)} → ${fmt(b.mean_rank, 2)}`,
-      `${fmt(a.rank_hist[3], 0)} → ${fmt(b.rank_hist[3], 0)} %`,
+      `${fmt(a.rank_hist[3], 0)} → ${fmt(b.rank_hist[3], 0)}`,
       `${gg(R, "lte")} → ${gg(G, "lte")}`, `${gg(R, "per_layer")} → ${gg(G, "per_layer")}`]);
   }
-  return table(["Precoding", "Load", "NR RU", "NR mean UPT [Mbit/s]", "NR mean rank", "NR rank-4 share",
-    "LTE style gain", "1 CW per layer gain"], rows, [14, 8, 13, 15, 13, 13, 14, 14], { size: 16 });
+  return table(["Precoding (SVD)", "Load", "NR: RU [%]", "NR: mean UPT [Mbit/s]", "NR: mean rank", "NR: rank-4 share [%]",
+    "LTE style gain [%]", "1 CW per layer gain [%]"], rows, [13, 8, 12, 14, 14, 13, 13, 13], { size: 17 });
 }
 function perDrop() {
   const rows = [];
