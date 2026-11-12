@@ -1,0 +1,418 @@
+{
+ "title": "Codeword-to-layer mapping for the NR downlink with a hand-grip model",
+ "subtitle": "System-level results: FTP model 1, Dense Urban-eMBB, 20 MHz, MMSE-IRC receiver",
+ "dateline": "12 November 2026 · simulator NR_DL_SLS (nrsls), branch claude/quirky-mendel-3s59cm",
+ "blocks": [
+  {
+   "h1": "1  Summary"
+  },
+  {
+   "p": "With the users' hand grip modelled and a fair NR baseline, both multi-codeword mappings give a small but consistent gain in mean user-perceived throughput (UPT) over NR's single codeword with an MMSE-IRC receiver: **about 2 % at every load with sub-band SVD precoding**, and 1.5–2 % at 20 and 50 % load but under 1 % at 70 % load with wideband SVD."
+  },
+  {
+   "auto": "headline"
+  },
+  {
+   "cap": "Table 1. Mean UPT gain over NR's single codeword with the hand grip modelled. Mean over the files of 10 drops; ± is the standard error of the 10 single-drop gains (every scheme sees the same users, channels and files in a drop)."
+  },
+  {
+   "b": [
+    "**Consistency.** 109 of the 120 single-drop gains are positive; with sub-band SVD, 57 of 60. The worst single drop is −1.9 %.",
+    "**LTE style against one codeword per layer.** They are equal within the noise: they differ by at most half a point of mean UPT. LTE style gets there with two codewords instead of four.",
+    "**Cell edge.** The 5th-percentile UPT gains +0.5 to +3.7 % with sub-band SVD. With wideband SVD it gains at 20 and 50 % load and is flat to −1.3 % at 70 %.",
+    "**The hand grip itself changes little.** It raises the multi-codeword gain by about a third of a point on average, most clearly with sub-band SVD at 50 and 70 % load (+1.1 → +1.9 % and +1.3 → +2.3 % for LTE style).",
+    "**Against the 2–5 % target.** Sub-band SVD reaches the lower end of it at all three loads. More than that is not available with MMSE-IRC; it needs a receiver that cancels codewords (section 6).",
+    "**Placeholder values.** The 6 dB hand loss on one or two covered antennas is an assumption of this study, not a specified or measured value (section 3)."
+   ]
+  },
+  {
+   "h1": "2  What was evaluated"
+  },
+  {
+   "p": "Three ways of mapping codewords to up to four MIMO layers are compared in the same system simulation. Each codeword has its own MCS, CQI, HARQ process and ACK/NACK."
+  },
+  {
+   "table": {
+    "head": [
+     "Scheme",
+     "Codewords",
+     "Layers per codeword at rank 1 / 2 / 3 / 4"
+    ],
+    "rows": [
+     [
+      "NR (Alt1)",
+      "1",
+      "1 / 2 / 3 / 4"
+     ],
+     [
+      "LTE style (Alt2)",
+      "1 at rank 1, else 2",
+      "1 / 1+1 / 1+2 / 2+2"
+     ],
+     [
+      "1 CW per layer (Alt3)",
+      "one per layer",
+      "1 / 1+1 / 1+1+1 / 1+1+1+1"
+     ]
+    ],
+    "widths": [
+     28,
+     28,
+     44
+    ],
+    "opt": {
+     "left": [
+      1,
+      2
+     ]
+    }
+   }
+  },
+  {
+   "cap": "Table 2. The three mappings."
+  },
+  {
+   "p": "The assumptions are those of the earlier FTP model 1 evaluation at 20 MHz, with three changes: the hand grip of section 3, the fair baseline (below), and arrival rates calibrated for exactly this configuration."
+  },
+  {
+   "table": {
+    "head": [
+     "Item",
+     "Assumption"
+    ],
+    "rows": [
+     [
+      "Scenario",
+      "Dense Urban-eMBB, configuration A (ITU-R M.2412): 19 sites, 57 cells, 200 m inter-site distance, wrap-around, 80 % indoor users at 3 km/h, outdoor users in cars at 30 km/h"
+     ],
+     [
+      "Carrier",
+      "4 GHz FDD, 20 MHz channel, 30 kHz SCS, 52 PRB, 0.5 ms slot"
+     ],
+     [
+      "BS",
+      "44 dBm, 32 TXRUs (8 × 8 × 2 elements), 25 m height"
+     ],
+     [
+      "UT",
+      "4 receive antennas (1 × 2 cross-polarised elements), 7 dB noise figure"
+     ],
+     [
+      "Channel",
+      "TR 38.901 UMa, spatially correlated shadow fading, building loss with 20 % high-loss and 80 % low-loss buildings; fast fading updated every 2 ms"
+     ],
+     [
+      "Traffic",
+      "FTP model 1: users arrive as a Poisson process per cell at random places, download one 0.5 Mbyte file and leave"
+     ],
+     [
+      "Loads",
+      "Arrival rates calibrated for 20, 50 and 70 % resource utilisation (RU) of NR; the evaluation runs land at 19, 44–45 and 67 % (Table 4)"
+     ],
+     [
+      "Precoding",
+      "Reciprocity-based SVD per 4-PRB sub-band, and wideband SVD; SU-MIMO, rank ≤ 4"
+     ],
+     [
+      "CSI",
+      "Reported every 20 ms and 4 ms old when first used; 4-PRB sub-bands; one CQI per codeword"
+     ],
+     [
+      "Scheduler",
+      "Proportional fair in time and frequency, 4-PRB RBGs"
+     ],
+     [
+      "Link adaptation",
+      "256QAM MCS table, 10 % BLER target, outer loop (OLLA) with 0.5 dB steps, warm and fast start for a new user"
+     ],
+     [
+      "HARQ",
+      "Chase combining, at most 4 transmissions, adaptive retransmissions"
+     ],
+     [
+      "Receiver",
+      "MMSE-IRC"
+     ],
+     [
+      "Fair baseline",
+      "One OLLA loop per transmission rank and codeword for every scheme, NR included; HARQ round trip of 4 slots (2 ms)"
+     ],
+     [
+      "Hand grip",
+      "TR 38.901 §7.6.4.1 self-blocking (30 dB) and 6 dB loss on the 1 or 2 antennas the hand covers (section 3)"
+     ],
+     [
+      "Statistics",
+      "10 drops, each scheme on the same drops; 1000 slots per run at 20 and 50 % load, 2000 at 70 %; files that arrived before the last 300 (1000) slots are counted"
+     ],
+     [
+      "KPI",
+      "User-perceived throughput (UPT) of a file: its size over the time from arrival to the last bit; mean, 5th and 95th percentile over files"
+     ]
+    ],
+    "widths": [
+     20,
+     80
+    ],
+    "opt": {
+     "left": [
+      1
+     ]
+    }
+   }
+  },
+  {
+   "cap": "Table 3. Evaluation assumptions."
+  },
+  {
+   "p": "**Fair baseline.** In the earlier runs NR had one OLLA loop per user for all ranks, while the multi-codeword schemes had one per codeword. A loop per rank is something NR can do just as well, and it makes NR itself 3–4 % faster; without it, part of the multi-codeword gain is only better link adaptation. The 4-slot HARQ round trip is the shorter of the two values studied; with several codewords a file more often ends on a retransmission of a single codeword, so a long round trip costs the multi-codeword schemes more."
+  },
+  {
+   "auto": "rates"
+  },
+  {
+   "cap": "Table 4. Arrival rates of the final set-up [users per second per cell], calibrated with NR in the fair baseline on drops 0 and 1 (2300-slot runs), and NR's RU in the evaluation runs."
+  },
+  {
+   "h1": "3  Hand-grip model"
+  },
+  {
+   "p": "The grip has two parts. The first is from TR 38.901; the second is an addition of this study, because the first cannot make one UT antenna weaker than another."
+  },
+  {
+   "table": {
+    "head": [
+     "Part",
+     "Model",
+     "Parameters"
+    ],
+    "rows": [
+     [
+      "Self-blocking",
+      "TR 38.901 §7.6.4.1 (blockage model A). Each UT is held in portrait or landscape mode and has a random azimuth orientation. A cluster that arrives inside the grip's angular region is attenuated on all UT antennas alike. It acts on serving and interfering links and on cell selection.",
+      "Portrait / landscape 50 / 50; regions of Table 7.6.4.1-1; 30 dB"
+     ],
+     [
+      "Per-antenna hand loss",
+      "Not in TR 38.901. The hand covers some of the UT's 4 antennas, picked at random per UT. A covered antenna receives less power from every cell and direction; its thermal noise is unchanged. Cell selection is not affected.",
+      "1 antenna covered in portrait mode, 2 in landscape mode; 6 dB"
+     ]
+    ],
+    "widths": [
+     18,
+     57,
+     25
+    ],
+    "opt": {
+     "left": [
+      1,
+      2
+     ]
+    }
+   }
+  },
+  {
+   "cap": "Table 5. The two parts of the hand-grip model."
+  },
+  {
+   "p": "**The 6 dB and the number of covered antennas are placeholders.** They are not from a specification or a measurement and should be replaced by agreed values. The 30 dB of the self-blocking is the fixed value of TR 38.901."
+  },
+  {
+   "p": "What the grip does to the channel, measured on the singular values of each user's serving channel (4 × 32, two drops, 2,280 users):"
+  },
+  {
+   "table": {
+    "head": [
+     "Model",
+     "Layer 2 below layer 1",
+     "Layer 3 below layer 1",
+     "Layer 4 below layer 1"
+    ],
+    "rows": [
+     [
+      "Orientation only, nothing blocked",
+      "3.2 dB",
+      "8.4 dB",
+      "12.4 dB"
+     ],
+     [
+      "Self-blocking 30 dB",
+      "3.4 dB",
+      "9.5 dB",
+      "13.7 dB"
+     ],
+     [
+      "Self-blocking + hand loss 6 dB (this report)",
+      "3.9 dB",
+      "10.6 dB",
+      "16.0 dB"
+     ],
+     [
+      "Self-blocking + hand loss 10 dB",
+      "4.0 dB",
+      "12.6 dB",
+      "19.2 dB"
+     ]
+    ],
+    "widths": [
+     40,
+     20,
+     20,
+     20
+    ]
+   }
+  },
+  {
+   "cap": "Table 6. Median gap of each layer's singular value to the strongest layer."
+  },
+  {
+   "b": [
+    "**Self-blocking.** It costs a user 2.4 dB of received power on average and 1.1 dB at the median, after the user has picked its best cell; a quarter of the serving-cell clusters are blocked. It widens the gap of layers 3 and 4 by about 1 dB.",
+    "**Hand loss.** 6 dB on one or two antennas falls mostly on the weakest layer: the gap of layer 4 widens by another 2.3 dB, that of layer 2 by 0.5 dB."
+   ]
+  },
+  {
+   "h1": "4  Results"
+  },
+  {
+   "h2": "4.1  Mean UPT gain over NR"
+  },
+  {
+   "fig": {
+    "ratio": 0.473,
+    "alt": "Mean UPT gain of LTE style and one codeword per layer over NR at 20, 50 and 70 % RU, for sub-band and wideband SVD, with the single drops and 95 % intervals."
+   }
+  },
+  {
+   "cap": "Figure 1. Mean UPT gain over NR with the hand grip. Large dot: all files of the 10 drops; bar: 95 % confidence interval from the 10 single-drop gains; small dots: the single drops."
+  },
+  {
+   "p": "With sub-band SVD the gain is about 2 % at all three loads and four to eight standard errors above zero. With wideband SVD it is 1.5–2 % at 20 and 50 % load and drops to 0.8 % at 70 %, where it is still about two standard errors above zero. The two mappings never differ by more than half a point, which is about one standard error."
+  },
+  {
+   "h2": "4.2  Cell-edge and best users"
+  },
+  {
+   "auto": "percentiles"
+  },
+  {
+   "cap": "Table 7. UPT gain over NR at the mean, 5th and 95th percentile of the files, and the range of the single drops' mean gains."
+  },
+  {
+   "p": "The percentiles are noisier than the mean, because they rest on fewer files. With sub-band SVD neither end of the distribution loses: the 5th percentile gains at every load, and the 95th percentile is flat at 20 % load and gains 2–4 % at 50 and 70 %. With wideband SVD at 70 % load the cell-edge users are flat with LTE style and 1.3 % slower with one codeword per layer."
+  },
+  {
+   "h2": "4.3  Link statistics"
+  },
+  {
+   "auto": "baseline"
+  },
+  {
+   "cap": "Table 8. Absolute numbers of the three schemes. BLER is that of first transmissions, per codeword in the order of the layers; the retransmission share is the share of scheduled RBGs that carried retransmissions."
+  },
+  {
+   "p": "Three things stand out. **Rank.** The multi-codeword schemes use rank 4 more often than NR (43 and 37 % against 29 % of the transmissions with sub-band SVD at 20 % load), because a weak fourth layer only lowers the MCS of its own codeword. **BLER.** Every codeword sits near the 10 % target; the third and fourth codewords of one codeword per layer, which carry the weakest layers, are 1–3 points higher. **Retransmissions.** They take a larger share of the resources with more codewords, 12 and 14 % against 7 % of the RBGs at 70 % load, which offsets part of the gain."
+  },
+  {
+   "h2": "4.4  What the hand grip changes"
+  },
+  {
+   "auto": "gripEffect"
+  },
+  {
+   "cap": "Table 9. Without the grip → with the grip, fair baseline in both. The runs without the grip used arrival rates calibrated for the earlier baseline, so their load is a little lower. The two sides are different users and files and are compared as averages only."
+  },
+  {
+   "p": "At 20 % load NR is 3–4 % slower with the grip than without, and at 50 and 70 % load 0–2 % slower; part of this is the 3–5 % higher arrival rate of the runs with the grip. NR's rank-4 share falls by 4 points at 20 % load. The multi-codeword gain rises in 8 of the 12 cells and falls in 4, by +0.35 points on average; a single cell's change (−0.7 to +1.2 points) is within two standard errors of such a difference, about 0.6 points each. So the grip, with a 6 dB hand loss, does not change the picture: it makes the fourth layer 3.6 dB weaker (Table 6), but most transmissions do not use the fourth layer."
+  },
+  {
+   "h1": "5  Conclusions"
+  },
+  {
+   "b": [
+    "**MMSE-IRC, sub-band (reciprocity-based) precoding.** LTE style and one codeword per layer gain 2.0–2.4 % mean UPT over NR at 20, 50 and 70 % load with the hand grip, in 57 of 60 single drops, without a loss at the cell edge.",
+    "**MMSE-IRC, wideband precoding.** 1.5–2.0 % at 20 and 50 % load, 0.8 % at 70 %.",
+    "**Number of codewords.** Two codewords (LTE style) give the gain of four within half a point. Nothing here argues for more than two.",
+    "**Hand grip.** With TR 38.901 self-blocking and a 6 dB hand loss, the gain is about a third of a point higher than without the grip. The conclusion does not depend on the grip.",
+    "**Size of the gain.** About 2 % is what MMSE-IRC supports when NR's link adaptation is given the same per-rank outer loop. A larger gain needs codeword-level interference cancellation."
+   ]
+  },
+  {
+   "h1": "6  Limits and open points"
+  },
+  {
+   "b": [
+    "**Hand-loss values.** 6 dB on 1 or 2 antennas is a placeholder (section 3). The gain of the multi-codeword schemes is expected to grow with the loss; this has not been swept at system level.",
+    "**Hand-loss model.** One loss for every covered antenna, the same at all frequencies, no change of the antenna pattern, and no link between which antennas are covered and which directions are blocked.",
+    "**Receiver.** MMSE-IRC only. A codeword-level SIC receiver is where multiple codewords gain most (+5 to +12 % mean UPT in the earlier FTP model 3 runs with ideal cancellation); it has not been rerun with the fair baseline and the grip.",
+    "**Baseline.** NR here has per-rank OLLA and a 2 ms HARQ round trip. With one loop for all ranks or an 8-slot round trip the comparison shifts: see the earlier results in results/cw2lm_ftp1_fair_20mhz.md.",
+    "**Load.** The evaluation runs land at 19, 44–45 and 67 % RU, not 20, 50 and 70 %: they are shorter than the calibration runs and start from an empty system.",
+    "**Statistics.** 10 drops, 1,400 to 5,400 files per cell of Table 1. The standard error of a mean gain is 0.3–0.6 points; differences between the two multi-codeword schemes are within the noise.",
+    "**Reference without the grip.** It ran at a slightly lower load (17–18, 44 and 65 % RU) and with a scheduler buffer-estimate cap of 7.406 instead of 7.4 bit per RE and layer, which moves a run's mean UPT by at most 0.5 %."
+   ]
+  },
+  {
+   "h1": "Annex A  Single-drop gains",
+   "break": true
+  },
+  {
+   "auto": "perDrop"
+  },
+  {
+   "cap": "Table A1. Mean UPT gain over NR in each drop [%], with the hand grip."
+  },
+  {
+   "h1": "Annex B  Files and reproduction"
+  },
+  {
+   "table": {
+    "head": [
+     "What",
+     "Where in the repository"
+    ],
+    "rows": [
+     [
+      "Study script",
+      "examples/cw2lm_ftp_eval.py, set-up 20mhz-ftp1-grip-hand-fair, variant irc-fix-warmfast-pr-rtt4"
+     ],
+     [
+      "Calibration log and rates",
+      "results/ftp1_final_cal/cal.jsonl, results/cw2lm_ftp1_grip_hand_fair_rates_20mhz.json"
+     ],
+     [
+      "Run logs (180 runs)",
+      "results/ftp1_final/*.jsonl"
+     ],
+     [
+      "Summary",
+      "results/cw2lm_ftp1_grip_hand_fair_20mhz.json"
+     ],
+     [
+      "Reference without grip",
+      "results/ftp1_fair/*.jsonl, results/cw2lm_ftp1_fair_20mhz.json"
+     ],
+     [
+      "Hand-grip model",
+      "nrsls/propagation/blockage.py, docs/hand-grip.md"
+     ],
+     [
+      "This report",
+      "examples/cw2lm_final_report.py (numbers, figure), examples/cw2lm_final_report.js (document)"
+     ]
+    ],
+    "widths": [
+     28,
+     72
+    ],
+    "opt": {
+     "left": [
+      1
+     ]
+    }
+   }
+  },
+  {
+   "cap": "Table B1. Sources."
+  }
+ ]
+}

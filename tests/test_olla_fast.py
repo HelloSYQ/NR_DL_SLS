@@ -158,3 +158,17 @@ def test_fair_baseline_variant_of_the_study_script():
         assert fb.receiver == "irc" and not fb.ri_olla and fb.mcs_table == 2
     base = ev.fb_config("svd_sb_20ms", "irc-fix-warmfast", "nr", 7.0, 1000, 0, 0, "20mhz-ftp1")
     assert not base.olla_per_rank and base.harq_rtt_slots == 8
+
+
+def test_final_setup_of_the_study_script():
+    import os
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "examples"))
+    import cw2lm_ftp_eval as ev
+    final, hand = ev.SETUPS["20mhz-ftp1-grip-hand-fair"], ev.SETUPS["20mhz-ftp1-grip-hand"]
+    assert final["preset"] == hand["preset"]         # the grip and the hand loss
+    sc = ev.scenario("20mhz-ftp1-grip-hand-fair")
+    assert sc.ue_self_blocking and sc.hand_loss_db == ev.HAND_LOSS_DB
+    # its own rates (calibrated with the fair baseline) and summary
+    others = [s for k, s in ev.SETUPS.items() if k != "20mhz-ftp1-grip-hand-fair"]
+    assert all(final["rates"] != s["rates"] and final["out"] != s["out"] for s in others)

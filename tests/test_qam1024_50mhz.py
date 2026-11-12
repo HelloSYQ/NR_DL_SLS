@@ -92,6 +92,12 @@ def test_csi_with_1024qam_and_evm():
     assert rep(mcs_table=2, evm_percent=2.5).cqi_wb == 15      # 256QAM does not need more
 
 
+def test_buffer_estimate_cap_is_unchanged_up_to_256qam():
+    from nrsls.engine.fullbuffer import _se_max
+    assert _se_max(1) == 7.4 and _se_max(2) == 7.4 and _se_max(3) == 7.4
+    assert _se_max(4) == pytest.approx(9.2578, abs=1e-4)
+
+
 def _small(**kw):
     fb = FullBufferConfig(n_slots=40, warmup_slots=20, k_interferers=2,
                           channel_update_slots=10, csi_period_slots=10,

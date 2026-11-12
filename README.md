@@ -87,6 +87,25 @@ follows TR 38.901 (scenarios, propagation, calibration), TS 38.211/212/214
   [`docs/cw2lm-ftp-20mhz.md`](docs/cw2lm-ftp-20mhz.md) and
   `6GR_DL_CW2L_template_v003_20MHz_44dBm.xlsx`.
 
+- **Final CW2L evaluation with the hand grip** (2026-11-12). The fair baseline with
+  TR 38.901 self-blocking and a 6 dB per-antenna hand loss, arrival rates
+  calibrated for it, MMSE-IRC, 10 drops: LTE style gains +2.0 / +1.9 / +2.3 %
+  and one codeword per layer +2.2 / +2.0 / +2.4 % mean UPT over NR at 20 / 50 /
+  70 % load with sub-band SVD (wideband SVD: +1.5 / +1.5 / +0.8 % and
+  +1.8 / +1.9 / +0.8 %). Report:
+  [`docs/CW2L_FTP1_hand_grip_report.docx`](docs/CW2L_FTP1_hand_grip_report.docx);
+  see also [`docs/hand-grip.md`](docs/hand-grip.md).
+
+- **Fair-baseline rerun of the FTP model 1 study** (2026-11-11). MMSE-IRC, 20 MHz,
+  256QAM, 10 drops, with one OLLA loop per transmission rank for every scheme
+  (NR too) and a 4-slot HARQ round trip (variant `irc-fix-warmfast-pr-rtt4`).
+  NR itself is 4–6 % faster than before, and over it LTE style gains
+  +2.3 / +1.1 / +1.3 % and one codeword per layer +2.7 / +1.5 / +1.2 % mean UPT
+  at 20 / 50 / 70 % load with sub-band SVD (wideband SVD: +0.9 / +1.0 / +1.5 %
+  and +0.7 / +1.6 / +1.1 %), standard error 0.3–0.6 points. See
+  [`results/cw2lm_ftp1_fair_20mhz.md`](results/cw2lm_ftp1_fair_20mhz.md); logs in
+  `results/ftp1_fair/`, cap check in `results/ftp1_fair_capcheck/`.
+
 - **1024QAM and a 50 MHz carrier** (2026-11-11). `FullBufferConfig.mcs_table = 4` is
   the Rel-17 1024QAM table (TS 38.214 Table 5.1.3.1-4) and `evm_percent` limits
   every SINR to 1 / EVM²; the study script has set-ups `50mhz-ftp1` (133 PRB,
@@ -168,6 +187,12 @@ python -m pytest
 
 Every field of `nrsls.ScenarioConfig` can be overridden:
 `get_preset("system", ue_per_cell=20, o2i_model="legacy")`.
+For example, `ue_self_blocking=True` adds the users' hand grip: the UT
+self-blocking of TR 38.901 §7.6.4.1 (blockage model A). Each UT is held in
+portrait or landscape mode, half and half, with a random orientation, and a
+cluster that arrives in the grip's region loses 30 dB. `hand_loss_db` adds a
+loss on the antennas the hand covers, which TR 38.901 does not have; see
+[`docs/hand-grip.md`](docs/hand-grip.md).
 
 `--jobs N` spreads drops over N spawned processes with single-threaded BLAS.
 Results do not depend on N, because drop *i* always uses the random stream
@@ -180,7 +205,8 @@ nrsls/
   config/scenario.py     ScenarioConfig, BS/UT antenna configs, presets
   topology/              hexagonal grid + wrap-around, InH hall, UT drop
   antenna/array.py       panel + TXRU virtualisation (element pattern from nrdlsim)
-  propagation/           pathloss, LOS, O2I / in-car loss, LSPs, clusters/rays, H(f,t)
+  propagation/           pathloss, LOS, O2I / in-car loss, LSPs, clusters/rays, H(f,t),
+                         UT self-blocking (hand grip)
   link/                  noise, geometry, multipath port-0 RSRP; association
   phy/                   IRC SINR, Type-I / eType-II codebooks, CSI (RI/PMI/CQI)
   mac/                   CQI -> MCS, OLLA; MU-MIMO pairing and zero forcing

@@ -58,6 +58,14 @@ class Clusters:
     los_aoa: np.ndarray
     los_zoa: np.ndarray
     c_ds_s: np.ndarray       # (L,) cluster delay spread (sub-clusters)
+    # cluster centre arrival angles [deg], wrapped like the rays
+    aoa_c: np.ndarray | None = None     # (L, N)
+    zoa_c: np.ndarray | None = None
+    # UT self-blocking (propagation.blockage); None: no blocking
+    gain: np.ndarray | None = None      # (L, N) cluster power factor
+    los_gain: np.ndarray | None = None  # (L,) LOS-ray power factor
+    ue_bearing_deg: np.ndarray | None = None    # (L,) UT orientation (about z)
+    port_gain: np.ndarray | None = None  # (L, U ports) hand loss per UT antenna (power)
 
 
 def _wrap_zenith(z):
@@ -188,4 +196,6 @@ def generate_clusters(family, fc_ghz, condition, lsps, los_aod, los_zod,
                     zoa=_wrap_zenith(zoa), zod=_wrap_zenith(zod),
                     kappa=kappa, phase=phase, k_r=k_r,
                     los_aod=los_aod, los_zod=los_zod, los_aoa=los_aoa,
-                    los_zoa=los_zoa, c_ds_s=cds)
+                    los_zoa=los_zoa, c_ds_s=cds,
+                    aoa_c=np.mod(aoa_c + 180.0, 360.0) - 180.0,
+                    zoa_c=_wrap_zenith(zoa_c))
